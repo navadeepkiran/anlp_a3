@@ -126,15 +126,16 @@ class InternalSelectiveSSM(nn.Module):
         C_t = x_dbl[:, :, self.dt_rank + N:]
 
         delta = F.softplus(self.dt_proj(delta_raw))
-
-        delta_A = torch.exp(torch.einsum("bld,dn->bldn", delta, A))
-        delta_B_u = torch.einsum("bld,bln,bld->bldn", delta, B_t, u)
+        A_unsqueezed = A.unsqueeze(0)
 
         h = torch.zeros(B, D, N, device=u.device, dtype=u.dtype)
         y_list = []
         for t in range(L):
-            h = delta_A[:, t] * h + delta_B_u[:, t]
-            y_t = torch.einsum("bdn,bn->bd", h, C_t[:, t])
+            dt_t = delta[:, t, :].unsqueeze(-1)
+            delta_A_t = torch.exp(dt_t * A_unsqueezed)
+            delta_B_t = dt_t * B_t[:, t, :].unsqueeze(1) * u[:, t, :].unsqueeze(-1)
+            h = delta_A_t * h + delta_B_t
+            y_t = (h * C_t[:, t, :].unsqueeze(1)).sum(-1)
             y_list.append(y_t)
 
         y = torch.stack(y_list, dim=1)
