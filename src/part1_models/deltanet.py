@@ -54,16 +54,15 @@ class DeltaAttention(nn.Module):
         S = torch.zeros(B, H, D, D, device=x.device, dtype=x.dtype)
         o_list = []
 
-        for t in range(L):
-            k_t = k_norm[:, t, :, :].unsqueeze(-1)
-            v_t = v[:, t, :, :].unsqueeze(-1)
-            q_t = q_norm[:, t, :, :].unsqueeze(-1)
-            b_t = beta[:, t, :, :].unsqueeze(-1)
+        k_all = k_norm.unsqueeze(-1).unbind(dim=1)
+        v_all = v.unsqueeze(-1).unbind(dim=1)
+        q_all = q_norm.unsqueeze(-1).unbind(dim=1)
+        b_all = beta.unsqueeze(-1).unbind(dim=1)
 
+        for k_t, v_t, q_t, b_t in zip(k_all, v_all, q_all, b_all):
             v_pred = torch.matmul(S, k_t)
             err = v_t - v_pred
             S = S + b_t * torch.matmul(err, k_t.transpose(-1, -2))
-
             o_t = torch.matmul(S, q_t).squeeze(-1)
             o_list.append(o_t)
 
