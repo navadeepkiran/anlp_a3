@@ -58,6 +58,22 @@ def compute_precision_recall_f1(pred, target):
         f1 = 2.0 * (precision * recall) / (precision + recall)
     return precision, recall, f1
 
+def compute_char_precision_recall_f1(pred, target):
+    if not pred and not target:
+        return 1.0, 1.0, 1.0
+    if not pred or not target:
+        return 0.0, 0.0, 0.0
+    p_counter = Counter(pred)
+    t_counter = Counter(target)
+    intersection = sum((p_counter & t_counter).values())
+    precision = intersection / len(pred)
+    recall = intersection / len(target)
+    if precision + recall == 0:
+        f1 = 0.0
+    else:
+        f1 = 2.0 * (precision * recall) / (precision + recall)
+    return precision, recall, f1
+
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -85,13 +101,16 @@ def evaluate_dict(preds_dict, targets_dict):
     precisions = []
     recalls = []
     f1s = []
+    char_precisions = []
+    char_recalls = []
+    char_f1s = []
     levs = []
 
     phase_totals = [0] * 6
     phase_corrects = [0] * 6
 
-    pos_totals = [0] * 20
-    pos_corrects = [0] * 20
+    pos_totals = [0] * 21
+    pos_corrects = [0] * 21
 
     bucket_totals = {"0-1k": 0, "1-2k": 0, "2k+": 0}
     bucket_corrects = {"0-1k": 0, "1-2k": 0, "2k+": 0}
@@ -103,6 +122,7 @@ def evaluate_dict(preds_dict, targets_dict):
         ca = compute_char_accuracy(p, t, dist=lev)
         wa = compute_word_accuracy(p, t)
         prec, rec, f1 = compute_precision_recall_f1(p, t)
+        c_prec, c_rec, c_f1 = compute_char_precision_recall_f1(p, t)
 
         levs.append(lev)
         char_accs.append(ca)
@@ -110,9 +130,12 @@ def evaluate_dict(preds_dict, targets_dict):
         precisions.append(prec)
         recalls.append(rec)
         f1s.append(f1)
+        char_precisions.append(c_prec)
+        char_recalls.append(c_rec)
+        char_f1s.append(c_f1)
 
         min_len = min(len(p), len(t))
-        for idx in range(min(min_len, 20)):
+        for idx in range(min(min_len, 21)):
             pos_totals[idx] += 1
             if p[idx] == t[idx]:
                 pos_corrects[idx] += 1
@@ -137,7 +160,7 @@ def evaluate_dict(preds_dict, targets_dict):
     n = len(common_ids)
     pos_accuracies = {
         "pos_" + str(i): float(pos_corrects[i] / max(1, pos_totals[i]))
-        for i in range(20)
+        for i in range(21)
     }
     phase_accuracies = {
         "phase_" + str(i): float(phase_corrects[i] / max(1, phase_totals[i]))
@@ -155,8 +178,14 @@ def evaluate_dict(preds_dict, targets_dict):
         "precision": float(sum(precisions) / n),
         "recall": float(sum(recalls) / n),
         "f1": float(sum(f1s) / n),
+        "word_precision": float(sum(precisions) / n),
+        "word_recall": float(sum(recalls) / n),
+        "word_f1": float(sum(f1s) / n),
+        "char_precision": float(sum(char_precisions) / n),
+        "char_recall": float(sum(char_recalls) / n),
+        "char_f1": float(sum(char_f1s) / n),
         "levenshtein_distance": float(sum(levs) / n),
-        "per_position_accuracy_first20": pos_accuracies,
+        "per_position_accuracy_0_to_20": pos_accuracies,
         "phase_accuracies_mod6": phase_accuracies,
         "bucket_accuracies": bucket_accuracies
     }

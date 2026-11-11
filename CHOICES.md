@@ -80,13 +80,14 @@ Empirical analysis of `data/part1/` reveals:
 
 ### 2.4 Evaluation Metrics for Part 1
 1. **Character Accuracy**: Normalized character-level agreement: $1 - \frac{\text{Levenshtein}(y_{pred}, y_{true})}{\max(|y_{pred}|, |y_{true}|)}$.
-2. **Word Accuracy**: Proportion of words matching ground truth upon whitespace tokenization.
-3. **Precision, Recall, F1-Score**: Token-level unigram precision, recall, and harmonic mean F1.
-4. **Levenshtein Distance**: Exact edit distance computed via dynamic programming / Wagner-Fischer algorithm (or `editdistance` when available).
-5. **Parameter Count**: Total number of trainable parameters (`p.requires_grad`), strictly controlled between 3.1M and 3.9M across all architectures.
-6. **FLOPs**: Evaluated using `torch.utils.flop_counter.FlopCounterMode` (which measures forward-pass matrix multiplication FLOPs) on a standardized sequence length of 512 tokens.
-7. **Per-Position Accuracy (First 20 Positions)**: Fine-grained positional accuracy $P(y_i = \hat{y}_i)$ for $i \in \{0, 1, \dots, 19\}$ to diagnose exactly where each architecture successfully tracks the state-dependent substitution table vs where it degrades.
-8. **Analysis of Metric Discrepancy (0.36 vs 0.17)**:
+2. **Word Accuracy**: Proportion of words matching ground truth exactly upon whitespace tokenization.
+3. **Word-Level Precision, Recall, F1-Score**: Unigram multiset intersection of whitespace-delimited words: $\text{Prec} = \frac{|P \cap T|}{|P|}$, $\text{Rec} = \frac{|P \cap T|}{|T|}$, $F_1 = \frac{2 \cdot \text{Prec} \cdot \text{Rec}}{\text{Prec} + \text{Rec}}$.
+4. **Character-Level Precision, Recall, F1-Score**: Multiset intersection of individual character counts across the 27-character alphabet ($' '$, $'a'-'z'$). Because the English character distribution is compact, unigram character overlap sits naturally around ~0.50 even for baseline or uncalibrated outputs. Both word-level and character-level metrics are computed and reported for full transparency.
+5. **Levenshtein Distance**: Exact edit distance computed via dynamic programming / Wagner-Fischer algorithm (or `editdistance` when available).
+6. **Parameter Count**: Total number of trainable parameters (`p.requires_grad`), strictly controlled between 3.1M and 3.9M across all architectures.
+7. **FLOPs**: Evaluated using `torch.utils.flop_counter.FlopCounterMode` (which measures forward-pass matrix multiplication FLOPs) on a standardized sequence length of 512 tokens.
+8. **Per-Position Accuracy (Positions 0 to 20)**: Fine-grained positional accuracy $P(y_i = \hat{y}_i)$ for $i \in \{0, 1, \dots, 20\}$ to diagnose exactly where each architecture successfully tracks the state-dependent substitution table vs where decoding degrades.
+9. **Analysis of Metric Discrepancy (0.36 vs 0.17)**:
    - There is an inherent discrepancy between exact per-position token accuracy (~0.17) and normalized Levenshtein character accuracy (~0.36).
    - This occurs because Levenshtein distance permits dynamic alignment through insertions and deletions. Due to high English unigram character concentration ('e', 't', 'a', 'o', 'i', 'n', space), predicting English-distributed character sequences naturally aligns opportunistic subsequences with the gold text, yielding a baseline Levenshtein score of ~0.30–0.36 even when exact per-position substitution accuracy is ~0.17.
    - For instance, trivial repetitive text like "the the the ..." achieves an artificially low Levenshtein edit distance (~673) purely because English-like filler aligns better than raw spaces. Rather than attempting to game the metric with artificial English filler, our models are trained strictly on the true causal alignment objective, and this metric gap is explicitly analyzed in the report as an artifact of edit-distance dynamic programming.
