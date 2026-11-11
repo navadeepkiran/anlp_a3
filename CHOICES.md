@@ -74,7 +74,11 @@ Empirical analysis of `data/part1/` reveals:
 - DeltaNet layers perform the associative lookup table mapping, overwriting obsolete mappings via the delta rule.
 - The detailed theoretical hypothesis is documented in `docs/DESIGN.md`.
 
-### 2.3 Evaluation Metrics for Part 1
+### 2.3 Training Budget & Hardware Allocation
+- All models were trained under the identical compute budget of 3 epochs × 1,000 optimizer steps (effective batch size 16 via batch size 8 with gradient accumulation steps 2, max sequence length 1024), totaling 3,000 optimizer steps (48,000 sequences).
+- Hardware allocation: Transformer and Mamba were trained on the ADA cluster (NVIDIA RTX/Ada GPU), while DeltaNet and Hybrid were trained on Kaggle (NVIDIA Tesla T4 GPU). Checkpoints and WandB metrics sync automatically across environments to Hugging Face (`_v2_best.pt`) and the unified WandB project `Anlp_A3`.
+
+### 2.4 Evaluation Metrics for Part 1
 1. **Character Accuracy**: Normalized character-level agreement: $1 - \frac{\text{Levenshtein}(y_{pred}, y_{true})}{\max(|y_{pred}|, |y_{true}|)}$.
 2. **Word Accuracy**: Proportion of words matching ground truth upon whitespace tokenization.
 3. **Precision, Recall, F1-Score**: Token-level unigram precision, recall, and harmonic mean F1.

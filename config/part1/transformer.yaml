@@ -12,7 +12,7 @@ training:
   gradient_accumulation_steps: 2
   learning_rate: 0.0005
   weight_decay: 0.01
-  epochs: 5
+  epochs: 3
   optimizer: adamw
   scheduler: cosine
   warmup_steps: 200
