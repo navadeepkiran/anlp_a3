@@ -90,6 +90,9 @@ def evaluate_dict(preds_dict, targets_dict):
     phase_totals = [0] * 6
     phase_corrects = [0] * 6
 
+    pos_totals = [0] * 20
+    pos_corrects = [0] * 20
+
     bucket_totals = {"0-1k": 0, "1-2k": 0, "2k+": 0}
     bucket_corrects = {"0-1k": 0, "1-2k": 0, "2k+": 0}
 
@@ -109,6 +112,11 @@ def evaluate_dict(preds_dict, targets_dict):
         f1s.append(f1)
 
         min_len = min(len(p), len(t))
+        for idx in range(min(min_len, 20)):
+            pos_totals[idx] += 1
+            if p[idx] == t[idx]:
+                pos_corrects[idx] += 1
+
         for idx in range(min_len):
             ph = idx % 6
             phase_totals[ph] += 1
@@ -127,6 +135,10 @@ def evaluate_dict(preds_dict, targets_dict):
                 bucket_corrects[b_key] += 1
 
     n = len(common_ids)
+    pos_accuracies = {
+        "pos_" + str(i): float(pos_corrects[i] / max(1, pos_totals[i]))
+        for i in range(20)
+    }
     phase_accuracies = {
         "phase_" + str(i): float(phase_corrects[i] / max(1, phase_totals[i]))
         for i in range(6)
@@ -144,6 +156,7 @@ def evaluate_dict(preds_dict, targets_dict):
         "recall": float(sum(recalls) / n),
         "f1": float(sum(f1s) / n),
         "levenshtein_distance": float(sum(levs) / n),
+        "per_position_accuracy_first20": pos_accuracies,
         "phase_accuracies_mod6": phase_accuracies,
         "bucket_accuracies": bucket_accuracies
     }
