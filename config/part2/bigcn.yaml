@@ -1,0 +1,23 @@
+model:
+  type: bigcn
+  hidden_dim: 128
+  num_layers: 2
+  dropout: 0.5
+  pooling: max
+
+training:
+  batch_size: 128
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  epochs: 60
+  optimizer: adam
+  seeds: [42, 123, 456, 789, 1024]
+
+data:
+  dataset: gossipcop
+  feature: bert
+  root: data/part2
+
+wandb:
+  project: Anlp_A3
+  run_name: bigcn_bidirectional

@@ -1,0 +1,42 @@
+[project]
+name = "anlp-assignment3"
+version = "0.1.0"
+description = "ANLP Assignment 3 - Sequence Modeling & Graph Neural Networks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.2.0",
+    "tqdm>=4.65.0",
+    "huggingface-hub>=0.20.0",
+    "wandb>=0.16.0",
+    "python-dotenv>=1.0.0",
+    "fvcore>=0.1.5",
+    "torch-geometric>=2.4.0",
+    "editdistance>=0.8.1",
+]
+
+[project.optional-dependencies]
+pyg = [
+    "torch-geometric>=2.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu121"
+name = "pytorch-cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

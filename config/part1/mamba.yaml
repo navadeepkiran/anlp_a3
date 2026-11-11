@@ -1,0 +1,40 @@
+model:
+  type: mamba
+  d_model: 256
+  d_state: 16
+  d_conv: 4
+  expand: 2
+  d_ff: 1024
+  n_layers: 4
+  dropout: 0.1
+  max_seq_len: 16384
+
+training:
+  batch_size: 8
+  gradient_accumulation_steps: 2
+  learning_rate: 0.0005
+  weight_decay: 0.01
+  epochs: 5
+  optimizer: adamw
+  scheduler: cosine
+  warmup_steps: 200
+  gradient_clip: 1.0
+  max_steps_per_epoch: 1000
+  num_workers: 0
+
+data:
+  train_cipher: data/part1/train/cipher.jsonl
+  train_clean: data/part1/train/cleaned.jsonl
+  val_cipher: data/part1/validation/cipher.jsonl
+  val_clean: data/part1/validation/cleaned.jsonl
+  test_cipher: data/part1/test/cipher.jsonl
+  test_clean: data/part1/test/cleaned.jsonl
+  heldout_cipher: data/part1/heldout/cipher.jsonl
+  max_len: 1024
+
+wandb:
+  project: Anlp_A3
+  run_name: mamba_v2
+
+huggingface:
+  repo_id: nani-nav/anlp-a3-mamba-v2

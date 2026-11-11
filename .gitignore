@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Environment variables & secrets
+.env
+
+# Data (gitignored per instructions, preserve .gitkeep)
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Checkpoints / models (gitignored per instructions)
+models/**
+!models/**/
+!models/**/.gitkeep
+
+# Logs (gitignored per instructions)
+logs/**
+!logs/**/
+!logs/**/.gitkeep
