@@ -1,30 +1,33 @@
-# Hybrid Design: Mamba → DeltaNet Interleaved
+# Hybrid Design: Mamba and DeltaNet, interleaved
 
-## Observations on the cipher (data_new, validation + test)
-1. The 18 symbols `! ' + , - . / : ; < = > ? [ ] _ { }` are noise. After removing them, the ciphertext has exactly the same length as the plaintext in every sample, so character i of the cipher encrypts character i of the plaintext.
-2. The cipher is deterministic: the same plaintext always gives the same ciphertext.
-3. Position 0 uses a fixed one-to-one substitution. After that the substitution table changes at every step, depending on the plaintext seen so far. The dependence has a period-6 structure: at positions 2, 8, 14, … the output depends almost only on the previous character.
+## What I noticed about the cipher
+I looked at the new validation and test data before designing the hybrid.
 
-So decryption needs two things at every step:
-- (a) **Track state**: where we are in the 6-step cycle, and what the recent history was.
-- (b) **Look up** the current, constantly changing table: (state, cipher char) → plain char.
+1. Eighteen symbols (`! ' + , - . / : ; < = > ? [ ] _ { }`) are just noise. If I delete them, the ciphertext is exactly as long as the plaintext in every sample. So the i-th cipher character encrypts the i-th plaintext character.
+2. The cipher is deterministic. The same plaintext always gives the same ciphertext.
+3. The first character uses a fixed one-to-one substitution. After that, the substitution keeps changing depending on the plaintext that came before. There also seems to be a cycle of length 6: at positions 2, 8, 14 and so on, the output depends mostly on just the previous character.
 
-## Formulation (same for all four models)
-Causal, aligned sequence labelling. The input is the noise-stripped cipher; the output at position i is plaintext character i. There is one forward pass and no autoregressive generation, and the output length always equals the input length.
+So to decrypt each character, a model has to do two things:
+- keep track of the current state (where it is in the 6-step cycle and what came recently), and
+- use that state to look up the current substitution table and map the cipher character back to a plain character.
 
-## Hybrid architecture
-Four blocks in the order **Mamba → DeltaNet → Mamba → DeltaNet**. Every block is pre-RMSNorm → mixer → residual, followed by pre-RMSNorm → GELU FFN → residual. Width and depth match the pure models, so parameter counts are comparable.
+## How every model is set up
+All four models are trained the same way. The input is the cipher with the noise symbols removed, and the model predicts the plaintext character at each position. It reads left to right only (causal), does one forward pass, and the output is always exactly as long as the input.
 
-## Hypothesis
-- **Mamba is suited to (a).** Its causal convolution captures the recent cipher context. Its input-dependent decay (Δ) can keep or reset state, which is what a periodic, resetting cipher state needs.
-- **DeltaNet is suited to (b).** The delta rule overwrites an old key→value association instead of adding to it. That matches a substitution table that keeps changing; additive memory would blur old and new mappings together.
-- **Why Mamba comes first:** DeltaNet's keys work better when they already carry local context. The DeltaNet paper adds a short convolution for exactly this reason, and here the Mamba layer provides it.
-- **Why a DeltaNet layer comes last:** the last thing done before the output is the table lookup.
-- **Why interleave:** the second pair can refine the state using the first lookup's guesses.
+## The hybrid
+Four blocks: Mamba, DeltaNet, Mamba, DeltaNet. Each block is RMSNorm, then the mixer (Mamba or DeltaNet) with a residual connection, then RMSNorm and a GELU feed-forward layer with another residual. Width and depth are the same as the pure models, so the parameter counts are close.
 
-## Testable predictions (same parameter budget and same number of training tokens)
-1. The hybrid beats both pure Mamba and pure DeltaNet on character accuracy.
-2. Pure Mamba loses less accuracy than pure DeltaNet at the hard phases (positions not of the form 6k+2). Pure DeltaNet is closer to the hybrid at the easy phase.
-3. The linear models (Mamba, DeltaNet, hybrid) keep their accuracy at positions beyond the training length better than the Transformer does.
+## Why I think this order should work
+- Mamba is good at keeping track of state. Its short convolution sees the last few characters, and its input-dependent step size lets it hold on to information or reset it. That fits a cipher whose state cycles and resets.
+- DeltaNet is good at being a lookup table that changes. The delta rule replaces an old key-value pair instead of piling a new one on top, which suits a substitution table that keeps changing.
+- Mamba goes first because DeltaNet works better when its keys already contain local context. The DeltaNet paper adds a short convolution for this reason; here the Mamba layer does that job.
+- DeltaNet goes last because the final step before the output is the table lookup.
+- Repeating the pair lets the second Mamba layer correct its state using the first DeltaNet layer's guesses.
 
-These will be checked with accuracy per phase (i mod 6) and accuracy versus position.
+## What I expect to see
+With the same parameter budget and the same amount of training:
+1. The hybrid should beat both pure Mamba and pure DeltaNet on character accuracy.
+2. Pure Mamba should lose less accuracy than pure DeltaNet at the harder positions (those not of the form 6k+2). At the easier positions, pure DeltaNet should be close to the hybrid.
+3. Mamba, DeltaNet and the hybrid should hold their accuracy past the training length better than the Transformer.
+
+I will check these using accuracy per position mod 6 and accuracy against position in the sequence.
