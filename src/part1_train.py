@@ -83,7 +83,7 @@ def evaluate_model(model, dataloader, device):
     bucket_correct = {"0-1k": 0, "1-2k": 0, "2k+": 0}
 
     with torch.no_grad():
-        for batch in dataloader:
+        for step_idx, batch in enumerate(dataloader):
             input_ids = batch["input_ids"].to(device)
             labels = batch["labels"].to(device)
 
@@ -112,6 +112,9 @@ def evaluate_model(model, dataloader, device):
             bucket_correct["1-2k"] += b1_c
             bucket_total["2k+"] += b2_v
             bucket_correct["2k+"] += b2_c
+
+            if (step_idx + 1) % 250 == 0 or (step_idx + 1) == len(dataloader):
+                print("Evaluating val [" + str(step_idx + 1) + "/" + str(len(dataloader)) + "] samples...", flush=True)
 
     avg_loss = total_loss / max(1, total_tokens)
     accuracy = correct_tokens / max(1, total_tokens)
