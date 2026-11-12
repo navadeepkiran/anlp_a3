@@ -55,15 +55,26 @@ def load_jsonl(path):
     return records
 
 def download_hf_checkpoint(repo_id, filename, local_dir):
-    from huggingface_hub import hf_hub_download
+    import urllib.request
     os.makedirs(local_dir, exist_ok=True)
+    target_path = os.path.join(local_dir, filename)
     token = os.environ.get("HUGGINGFACE_KEY") or os.environ.get("HF_TOKEN")
-    return hf_hub_download(
-        repo_id=repo_id,
-        filename=filename,
-        local_dir=local_dir,
-        token=token
-    )
+    try:
+        from huggingface_hub import hf_hub_download
+        return hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=local_dir,
+            token=token
+        )
+    except Exception:
+        url = f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
+        req = urllib.request.Request(url)
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(req) as resp, open(target_path, "wb") as out_f:
+            out_f.write(resp.read())
+        return target_path
 
 def upload_hf_checkpoint(local_path, repo_id, path_in_repo=None):
     from huggingface_hub import HfApi
