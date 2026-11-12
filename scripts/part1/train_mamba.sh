@@ -13,7 +13,7 @@ mkdir -p logs/part1
 mkdir -p models/part1
 mkdir -p output/part1
 
-echo "=== Training Mamba ==="
+echo "=== Training Mamba (Stage 2 Warm-Start) ==="
 uv sync
-uv run python -m src.part1_train --config config/part1/mamba.yaml
+uv run python -m src.part1_train --config config/part1/mamba.yaml --init_checkpoint models/part1/mamba_v3_best.pt --seed 43
 echo "=== Done ==="
