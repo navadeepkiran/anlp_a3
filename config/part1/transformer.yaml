@@ -17,7 +17,7 @@ training:
   scheduler: cosine
   warmup_steps: 200
   gradient_clip: 1.0
-  max_steps_per_epoch: 3000
+  max_steps_per_epoch: 4000
   num_workers: 0
 
 data:

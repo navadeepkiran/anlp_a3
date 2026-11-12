@@ -91,9 +91,9 @@ Empirical analysis of `data/part1/` reveals:
    - There is an inherent discrepancy between exact per-position token accuracy (~0.17) and normalized Levenshtein character accuracy (~0.36).
    - This occurs because Levenshtein distance permits dynamic alignment through insertions and deletions. Due to high English unigram character concentration ('e', 't', 'a', 'o', 'i', 'n', space), predicting English-distributed character sequences naturally aligns opportunistic subsequences with the gold text, yielding a baseline Levenshtein score of ~0.30–0.36 even when exact per-position substitution accuracy is ~0.17.
    - For instance, trivial repetitive text like "the the the ..." achieves an artificially low Levenshtein edit distance (~673) purely because English-like filler aligns better than raw spaces. Rather than attempting to game the metric with artificial English filler, our models are trained strictly on the true causal alignment objective, and this metric gap is explicitly analyzed in the report as an artifact of edit-distance dynamic programming.
-10. **v3 Training Scaling (15,000 Steps at max_len 256)**:
-    - To maximize sample diversity within the 12-hour training limit on modern accelerators, the models scale to `batch_size: 32`, `gradient_accumulation_steps: 1`, and `max_len: 256` across 5 epochs $\times$ 3,000 steps (15,000 gradient updates, traversing 480,000 distinct cipher sequences).
-    - Sequence shortening to 256 tokens eliminates recurrent loop bottlenecking on GPU, speeding up per-step execution by ~4x and allowing ~85% dataset coverage.
+10. **v3 Training Scaling (20,000 Steps at max_len 256)**:
+    - To maximize sample diversity within the 12-hour training limit on modern accelerators, the models scale to `batch_size: 32`, `gradient_accumulation_steps: 1`, and `max_len: 256` across 5 epochs $\times$ 4,000 steps (20,000 gradient updates, traversing 640,000 sequences and achieving ~1.12 complete passes over the 570,000-sample training set).
+    - Sequence shortening to 256 tokens eliminates recurrent loop bottlenecking on GPU, speeding up per-step execution by ~4x (under 1.3 s/step on T4 accelerators).
     - Checkpoints are uploaded to Hugging Face under dedicated `v3` repositories (`nani-nav/anlp-a3-*-v3`), ensuring complete isolation from earlier `v2` checkpoints.
 
 ---
