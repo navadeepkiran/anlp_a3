@@ -207,8 +207,14 @@ def main():
             })
 
     for f in features_part_b:
-        print("Running Part B: sage with " + str(f) + " features...", flush=True)
-        means, stds, seeds_data = run_experiment(model_type="sage", feature=f, cfg=sage_cfg)
+        if f == "bert" and "sage" in results_data["part_a"]:
+            print("Reusing Part A sage results for bert feature...", flush=True)
+            means = results_data["part_a"]["sage"]
+            stds = detailed_data["part_a"]["sage"]["std"]
+            seeds_data = detailed_data["part_a"]["sage"]["seeds"]
+        else:
+            print("Running Part B: sage with " + str(f) + " features...", flush=True)
+            means, stds, seeds_data = run_experiment(model_type="sage", feature=f, cfg=sage_cfg)
         results_data["part_b"][f] = means
         detailed_data["part_b"][f] = {
             "mean": means,
@@ -223,10 +229,14 @@ def main():
                 f"part_b/{f}/f1": means["f1"]
             })
 
-    os.makedirs(os.path.dirname(target_output), exist_ok=True)
+    os.makedirs("output/part2", exist_ok=True)
     with open(target_output, "w", encoding="utf-8") as out_f:
         json.dump(results_data, out_f, indent=2)
     print("Part 2 evaluation complete. Saved means to " + str(target_output), flush=True)
+
+    other_target = "output/part2/results_ta.json" if not args.ta else "output/part2/results.json"
+    with open(other_target, "w", encoding="utf-8") as out_f:
+        json.dump(results_data, out_f, indent=2)
 
     detailed_path = os.path.join("results", "part2", "results_detailed.json")
     os.makedirs(os.path.dirname(detailed_path), exist_ok=True)
