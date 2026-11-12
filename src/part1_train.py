@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
 
-from src.utils import set_seed, load_config, get_device
+from src.utils import set_seed, load_config, get_device, download_hf_checkpoint
 from src.part1_data import CipherTokenizer, PlainTokenizer, get_cipher_dataloader
 from src.part1_models.transformer import TransformerCipherModel
 from src.part1_models.mamba import MambaCipherModel
@@ -126,9 +126,9 @@ def get_cosine_schedule(optimizer, warmup_steps, total_steps, min_lr_ratio=0.1):
         return min_lr_ratio + 0.5 * (1.0 - min_lr_ratio) * (1.0 + math.cos(math.pi * progress))
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-def train(config_path):
+def train(config_path, init_checkpoint=None, seed=42):
     cfg = load_config(config_path)
-    set_seed(42)
+    set_seed(seed)
     device = get_device()
     print("Using device: " + str(device), flush=True)
 
@@ -176,6 +176,14 @@ def train(config_path):
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print("Model initialized: " + str(m_type) + " (" + str(num_params) + " parameters)", flush=True)
 
+    if init_checkpoint:
+        if not os.path.exists(init_checkpoint):
+            repo = cfg.get("huggingface", {}).get("repo_id")
+            print("Init checkpoint not found locally, downloading from Hugging Face: " + str(repo), flush=True)
+            init_checkpoint = download_hf_checkpoint(repo_id=repo, filename=os.path.basename(init_checkpoint), local_dir=os.path.join("models", "part1", "init"))
+        model.load_state_dict(torch.load(init_checkpoint, map_location=device))
+        print("Loaded initial weights from " + str(init_checkpoint), flush=True)
+
     total_steps = epochs * (max_steps_per_epoch if max_steps_per_epoch else len(train_loader))
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = get_cosine_schedule(optimizer, warmup_steps, total_steps)
@@ -200,6 +208,12 @@ def train(config_path):
 
     best_val_acc = -1.0
     global_step = 0
+
+    if init_checkpoint:
+        init_loss, init_acc, init_buckets = evaluate_model(model, val_loader, device)
+        best_val_acc = init_acc
+        torch.save(model.state_dict(), best_ckpt_path)
+        print("Initial val acc from loaded weights: " + str(round(init_acc, 4)) + " - Buckets: " + str({k: round(v, 4) for k, v in init_buckets.items()}), flush=True)
 
     is_cuda = (device.type == "cuda" if isinstance(device, torch.device) else "cuda" in str(device))
     use_bf16 = is_cuda and torch.cuda.is_bf16_supported()
@@ -305,8 +319,10 @@ def train(config_path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
+    parser.add_argument("--init_checkpoint", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    train(args.config)
+    train(args.config, init_checkpoint=args.init_checkpoint, seed=args.seed)
 
 if __name__ == "__main__":
     main()
