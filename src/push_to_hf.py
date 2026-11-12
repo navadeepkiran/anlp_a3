@@ -22,9 +22,7 @@ def push_model(model_type, ckpt_path=None):
     if not repo_id:
         raise ValueError("No repo_id found in config for " + str(model_type))
     if ckpt_path is None:
-        v2_path = os.path.join("models", "part1", model_type + "_v2_best.pt")
-        v1_path = os.path.join("models", "part1", model_type + "_best.pt")
-        ckpt_path = v2_path if os.path.exists(v2_path) else v1_path
+        ckpt_path = os.path.join("models", "part1", model_type + "_v3_best.pt")
     return push_model_to_hf(ckpt_path, repo_id)
 
 def main():

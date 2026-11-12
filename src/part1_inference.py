@@ -74,30 +74,19 @@ def load_inference_model(config_path, checkpoint_path=None, device="cpu", from_h
 
     ckpt_file = checkpoint_path
     repo_id = cfg.get("huggingface", {}).get("repo_id")
-    default_local_v2 = os.path.join("models", "part1", m_type + "_v2_best.pt")
-    default_local_v1 = os.path.join("models", "part1", m_type + "_best.pt")
-    default_local = default_local_v2 if os.path.exists(default_local_v2) else default_local_v1
+    default_local = os.path.join("models", "part1", m_type + "_v3_best.pt")
 
     if from_hf and repo_id:
         try:
             pulled = download_hf_checkpoint(
                 repo_id=repo_id,
-                filename=m_type + "_v2_best.pt",
+                filename=m_type + "_v3_best.pt",
                 local_dir=os.path.join("models", "part1")
             )
             if pulled and os.path.exists(pulled):
                 ckpt_file = pulled
-        except Exception:
-            try:
-                pulled = download_hf_checkpoint(
-                    repo_id=repo_id,
-                    filename=m_type + "_best.pt",
-                    local_dir=os.path.join("models", "part1")
-                )
-                if pulled and os.path.exists(pulled):
-                    ckpt_file = pulled
-            except Exception as e:
-                print("Warning: Hugging Face download failed (" + str(e) + "). Attempting local fallback...", flush=True)
+        except Exception as e:
+            print("Warning: Hugging Face download failed (" + str(e) + "). Attempting local fallback...", flush=True)
 
     if ckpt_file is None or not os.path.exists(ckpt_file):
         if os.path.exists(default_local):

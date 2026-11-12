@@ -182,7 +182,7 @@ def train(config_path):
 
     save_dir = os.path.join("models", "part1")
     os.makedirs(save_dir, exist_ok=True)
-    best_ckpt_path = os.path.join(save_dir, m_type + "_v2_best.pt")
+    best_ckpt_path = os.path.join(save_dir, m_type + "_v3_best.pt")
 
     wandb_run = None
     try:
@@ -192,7 +192,7 @@ def train(config_path):
             wandb.login(key=wandb_key)
             wandb_run = wandb.init(
                 project=cfg.get("wandb", {}).get("project", "Anlp_A3"),
-                name=cfg.get("wandb", {}).get("run_name", m_type + "_v2"),
+                name=cfg.get("wandb", {}).get("run_name", m_type + "_v3"),
                 config=cfg
             )
     except Exception:
@@ -295,7 +295,7 @@ def train(config_path):
     hf_repo = cfg.get("huggingface", {}).get("repo_id")
     if hf_repo and os.path.exists(best_ckpt_path):
         try:
-            push_model_to_hf(best_ckpt_path, hf_repo, m_type + "_v2_best.pt")
+            push_model_to_hf(best_ckpt_path, hf_repo, m_type + "_v3_best.pt")
             print("Successfully uploaded model to Hugging Face: " + str(hf_repo), flush=True)
         except Exception as e:
             print("Warning: Hugging Face upload skipped: " + str(e), flush=True)

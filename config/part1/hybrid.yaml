@@ -12,16 +12,16 @@ model:
   max_seq_len: 16384
 
 training:
-  batch_size: 8
-  gradient_accumulation_steps: 2
+  batch_size: 32
+  gradient_accumulation_steps: 1
   learning_rate: 0.0005
   weight_decay: 0.01
-  epochs: 3
+  epochs: 5
   optimizer: adamw
   scheduler: cosine
   warmup_steps: 200
   gradient_clip: 1.0
-  max_steps_per_epoch: 1000
+  max_steps_per_epoch: 3000
   num_workers: 0
 
 data:
@@ -32,11 +32,11 @@ data:
   test_cipher: data/part1/test/cipher.jsonl
   test_clean: data/part1/test/cleaned.jsonl
   heldout_cipher: data/part1/heldout/cipher.jsonl
-  max_len: 1024
+  max_len: 256
 
 wandb:
   project: Anlp_A3
-  run_name: hybrid_v2
+  run_name: hybrid_v3
 
 huggingface:
-  repo_id: nani-nav/anlp-a3-hybrid-v2
+  repo_id: nani-nav/anlp-a3-hybrid-v3
