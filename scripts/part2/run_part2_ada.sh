@@ -14,6 +14,7 @@ set -e
 mkdir -p logs/part2
 mkdir -p output/part2
 mkdir -p results/part2
+mkdir -p models/part2
 
 echo "=== Running Part 2 Evaluation ==="
 uv sync
