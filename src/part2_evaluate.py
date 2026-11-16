@@ -211,20 +211,20 @@ def main():
 
     wandb_run = None
     try:
-        import wandb
         wandb_key = os.environ.get("WANDB_KEY") or os.environ.get("WANDB_API_KEY", "")
         if wandb_key:
+            import wandb
             try:
                 wandb.login(key=wandb_key)
+                wandb_run = wandb.init(
+                    project="Anlp_A3",
+                    name="part2_gnn_evaluation",
+                    config={"models": models_part_a, "features": features_part_b}
+                )
             except Exception:
-                pass
-        wandb_run = wandb.init(
-            project="Anlp_A3",
-            name="part2_gnn_evaluation",
-            config={"models": models_part_a, "features": features_part_b}
-        )
+                wandb_run = None
     except Exception:
-        pass
+        wandb_run = None
 
     for m in models_part_a:
         cfg_path = os.path.join("config", "part2", m + ".yaml")
