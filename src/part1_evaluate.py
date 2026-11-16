@@ -250,6 +250,10 @@ def main():
     for k, v in metrics.items():
         if isinstance(v, float):
             print(str(k) + ": " + str(round(v, 4)))
+        elif isinstance(v, dict):
+            print(str(k) + ":")
+            for sub_k, sub_v in v.items():
+                print("  " + str(sub_k) + ": " + (str(round(sub_v, 4)) if isinstance(sub_v, float) else str(sub_v)))
         else:
             print(str(k) + ": " + str(v))
 
