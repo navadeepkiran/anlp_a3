@@ -123,23 +123,19 @@ def decrypt_sample(model, in_tok, out_tok, ciphertext, device="cpu", chunk_size=
         return ""
     input_ids = in_tok.encode(c_strip)
     L = len(input_ids)
-    use_cuda = device.type == "cuda" if isinstance(device, torch.device) else "cuda" in str(device)
-    dtype = torch.bfloat16 if (use_cuda and torch.cuda.is_bf16_supported()) else torch.float16
     if L <= chunk_size:
         input_tensor = torch.tensor([input_ids], dtype=torch.long, device=device)
         with torch.no_grad():
-            with torch.amp.autocast("cuda", enabled=use_cuda, dtype=dtype):
-                logits = model(input_tensor)
-                pred_ids = logits[0].argmax(dim=-1).tolist()
+            logits = model(input_tensor)
+            pred_ids = logits[0].argmax(dim=-1).tolist()
     else:
         pred_ids = []
         for i in range(0, L, chunk_size):
             chunk = input_ids[i:i + chunk_size]
             input_tensor = torch.tensor([chunk], dtype=torch.long, device=device)
             with torch.no_grad():
-                with torch.amp.autocast("cuda", enabled=use_cuda, dtype=dtype):
-                    logits = model(input_tensor)
-                    pred_ids.extend(logits[0].argmax(dim=-1).tolist())
+                logits = model(input_tensor)
+                pred_ids.extend(logits[0].argmax(dim=-1).tolist())
     return out_tok.decode(pred_ids)
 
 def main():

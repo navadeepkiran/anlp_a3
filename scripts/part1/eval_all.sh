@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -c 4
 #SBATCH --gres=gpu:1
-#SBATCH --time=00:30:00
+#SBATCH --time=02:00:00
 #SBATCH --job-name=anlp3_eval_all
 #SBATCH --output=logs/part1/eval_all_%j.log
 
