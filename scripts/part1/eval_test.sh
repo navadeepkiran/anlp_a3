@@ -12,12 +12,27 @@ mkdir -p logs/part1
 mkdir -p output/part1
 mkdir -p results/part1
 
-CONFIG=${1:-"config/part1/hybrid.yaml"}
+MODEL="hybrid"
 
-echo "=== Running Inference on GPU ($CONFIG) ==="
-uv run python -m src.part1_inference --config "$CONFIG"
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --model)
+      MODEL="$2"
+      shift 2
+      ;;
+    *)
+      if [[ "$1" == "transformer" || "$1" == "mamba" || "$1" == "deltanet" || "$1" == "hybrid" ]]; then
+        MODEL="$1"
+      fi
+      shift
+      ;;
+  esac
+done
 
-echo "=== Evaluating Metrics ==="
-uv run python -m src.part1_evaluate --pred output/part1/test_decrypt.jsonl --target data/part1/test/cleaned.jsonl
+echo "=== Running Inference ($MODEL) ==="
+uv run python -m src.part1_inference --model "$MODEL" --output_file "output/part1/${MODEL}_decrypt.jsonl"
 
-echo "=== Evaluation Complete ==="
+echo "=== Evaluating Metrics ($MODEL) ==="
+uv run python -m src.part1_evaluate --pred "output/part1/${MODEL}_decrypt.jsonl" --target data/part1/test/cleaned.jsonl --model "$MODEL"
+
+echo "=== Evaluation Complete for $MODEL ==="

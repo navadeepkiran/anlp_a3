@@ -17,7 +17,7 @@ In accordance with Clarification #5, the `src/` and `docs/` directories are exem
 - `src/part1_data.py`: Dataset loading, character-level vocabulary building, dynamic padding, noise stripping, and PyTorch `DataLoader` construction for cipher decryption.
 - `src/part1_train.py`: Unified training loop for all Part 1 models with learning rate scheduling, gradient clipping, checkpointing, and WandB tracking.
 - `src/part1_evaluate.py`: Standalone evaluation computing all 8 mandated metrics (Character Accuracy, Word Accuracy, Precision, Recall, F1, Levenshtein Distance, Parameter Count, FLOPs) matched strictly by sample ID.
-- `src/part1_inference.py`: Inference pipeline supporting standard test decryption (`output/part1/test_decrypt.jsonl`) and the heldout evaluation flag `--heldout` (`output/part1/heldout_result_2024101056.jsonl`).
+- `src/part1_inference.py`: Inference pipeline supporting standard test decryption (`output/part1/test_decrypt.jsonl`), per-model selection (`--model <transformer/mamba/deltanet/hybrid>`), and the heldout evaluation flag `--heldout` (`output/part1/heldout_result_2024101056.jsonl`).
 - `src/part2_models/`: Graph Neural Network architectures including Root-Only MLP (`mlp.py`), GCN (`gcn.py`), GraphSAGE (`sage.py`), GAT (`gat.py`), and Bi-GCN (`bigcn.py`).
 - `src/part2_data.py`: UPFD GossipCop dataset loader using PyTorch Geometric with 20%-10%-70% fixed train/val/test splits, undirected edge transform, and batch-wise feature standardization.
 - `src/part2_evaluate.py`: Multi-seed training and evaluation pipeline calculating mean and standard deviation across 5 random seeds, producing `output/part2/results.json` (and `output/part2/results_ta.json` with `--ta`), as well as `results/part2/results_detailed.json`.
@@ -75,8 +75,8 @@ Empirical analysis of `data/part1/` reveals:
 - The detailed theoretical hypothesis is documented in `docs/DESIGN.md`.
 
 ### 2.3 Training Budget & Hardware Allocation
-- All models were trained under the identical compute budget of 3 epochs × 1,000 optimizer steps (effective batch size 16 via batch size 8 with gradient accumulation steps 2, max sequence length 1024), totaling 3,000 optimizer steps (48,000 sequences).
-- Hardware allocation: Transformer and Mamba were trained on the ADA cluster (NVIDIA RTX/Ada GPU), while DeltaNet and Hybrid were trained on Kaggle (NVIDIA Tesla T4 GPU). Checkpoints and WandB metrics sync automatically across environments to Hugging Face (`_v2_best.pt`) and the unified WandB project `Anlp_A3`.
+- All models were trained under controlled compute budgets ($5 \text{ epochs} \times 4,000 \text{ steps}$ per stage, effective batch size 32, max sequence length 256), scaling progressively from Stage 1 to Stage 5.
+- Hardware allocation: Models were trained on the ADA cluster (NVIDIA RTX/Ada GPU) and Kaggle (NVIDIA Tesla T4 GPU). Checkpoints and WandB metrics sync automatically across environments to Hugging Face (`_v3_best.pt`) and the unified WandB project `Anlp_A3`.
 
 ### 2.4 Evaluation Metrics for Part 1
 1. **Character Accuracy**: Normalized character-level agreement: $1 - \frac{\text{Levenshtein}(y_{pred}, y_{true})}{\max(|y_{pred}|, |y_{true}|)}$.
@@ -84,19 +84,31 @@ Empirical analysis of `data/part1/` reveals:
 3. **Word-Level Precision, Recall, F1-Score**: Unigram multiset intersection of whitespace-delimited words: $\text{Prec} = \frac{|P \cap T|}{|P|}$, $\text{Rec} = \frac{|P \cap T|}{|T|}$, $F_1 = \frac{2 \cdot \text{Prec} \cdot \text{Rec}}{\text{Prec} + \text{Rec}}$.
 4. **Character-Level Precision, Recall, F1-Score**: Multiset intersection of individual character counts across the 27-character alphabet ($' '$, $'a'-'z'$). Because the English character distribution is compact, unigram character overlap sits naturally around ~0.50 even for baseline or uncalibrated outputs. Both word-level and character-level metrics are computed and reported for full transparency.
 5. **Levenshtein Distance**: Exact edit distance computed via dynamic programming / Wagner-Fischer algorithm (or `editdistance` when available).
-6. **Parameter Count**: Total number of trainable parameters (`p.requires_grad`), strictly controlled between 3.1M and 3.9M across all architectures.
+6. **Parameter Count**: Total number of trainable parameters (`p.requires_grad`), strictly controlled between 3.1M and 3.9M across all 4 baseline architectures, and 10.7M for the scaled Transformer Large.
 7. **FLOPs**: Evaluated using `torch.utils.flop_counter.FlopCounterMode` (which measures forward-pass matrix multiplication FLOPs) on a standardized sequence length of 512 tokens.
 8. **Per-Position Accuracy (Positions 0 to 20)**: Fine-grained positional accuracy $P(y_i = \hat{y}_i)$ for $i \in \{0, 1, \dots, 20\}$ to diagnose exactly where each architecture successfully tracks the state-dependent substitution table vs where decoding degrades.
 9. **Analysis of Metric Discrepancy (0.36 vs 0.17)**:
    - There is an inherent discrepancy between exact per-position token accuracy (~0.17) and normalized Levenshtein character accuracy (~0.36).
    - This occurs because Levenshtein distance permits dynamic alignment through insertions and deletions. Due to high English unigram character concentration ('e', 't', 'a', 'o', 'i', 'n', space), predicting English-distributed character sequences naturally aligns opportunistic subsequences with the gold text, yielding a baseline Levenshtein score of ~0.30–0.36 even when exact per-position substitution accuracy is ~0.17.
    - For instance, trivial repetitive text like "the the the ..." achieves an artificially low Levenshtein edit distance (~673) purely because English-like filler aligns better than raw spaces. Rather than attempting to game the metric with artificial English filler, our models are trained strictly on the true causal alignment objective, and this metric gap is explicitly analyzed in the report as an artifact of edit-distance dynamic programming.
-10. **Two-Stage Training Scaling Protocol (v3)**:
-    - All sequence models are trained in two distinct stages under `batch_size: 32`, `gradient_accumulation_steps: 1`, and `max_len: 256`:
-      - **Stage 1**: 20,000 steps (5 epochs $\times$ 4,000 steps) at peak learning rate $5 \times 10^{-4}$ with seed 42, traversing 640,000 sequences (~1.12 complete passes over the 570,000-sample training set). Sequence shortening to 256 tokens eliminates recurrent loop bottlenecking on GPU, achieving per-step latency under 1.3 s/step.
-      - **Stage 2 (Warm-Started Continuation)**: 20,000 steps (5 epochs $\times$ 4,000 steps) warm-started from Stage 1 weights via `--init_checkpoint`, using seed 43 to present samples in a different permutation, at a reduced peak learning rate of $3 \times 10^{-4}$.
-    - **Monotonic Checkpoint Guarantee**: Stage 2 evaluates the loaded Stage 1 weights before training begins (`best_val_acc = init_acc`), ensuring checkpoints are only updated when Stage 2 strictly improves upon Stage 1's performance.
-    - Checkpoints are managed on Hugging Face under dedicated `v3` repositories (`nani-nav/anlp-a3-*-v3`), ensuring complete isolation from earlier `v2` checkpoints.
+
+10. **Multi-Stage Training Scaling Protocol & Model Selection**:
+    - All sequence models were systematically evaluated across multi-stage training schedules (`batch_size: 32`, `gradient_accumulation_steps: 1`, `max_len: 256`):
+      - **Stage 1 (Fresh Warmup)**: 20,000 steps ($5 \text{ epochs} \times 4,000 \text{ steps}$) at peak LR $5 \times 10^{-4}$ with seed 42. Sequence truncation to 256 tokens eliminates GPU recurrent memory bottlenecks, allowing ~1.12 passes over the 570k training corpus.
+      - **Stage 2 (Continuation)**: 20,000 steps warm-started from Stage 1 weights via `--init_checkpoint`, with seed 43 at reduced LR $3 \times 10^{-4}$.
+      - **Stage 3 (Equal-Budget 4-Way Comparison)**: 20,000 steps warm-started from Stage 2 weights with seed 44 at LR $2 \times 10^{-4}$. This stage serves as the primary controlled benchmark where all four architectures (Transformer, Mamba, DeltaNet, Hybrid) are evaluated under an identical parameter budget (~3.4M params) and identical total training steps (60,000 optimizer steps, ~3.36 corpus passes).
+      - **Stages 4 & 5 (Recurrent Frontier Exploration)**: Extended warm-started training with seed 45 and seed 46 at decaying learning rates ($1 \times 10^{-4}$ and $5 \times 10^{-5}$) to evaluate asymptotic convergence for Mamba and Transformer.
+    - **Capacity Scaling (Transformer Large)**:
+      - Because Transformer exhibited the steepest validation improvement slope and ~9× faster training throughput than recurrent architectures, a scaled-up architecture was developed: `d_model: 384`, `n_heads: 6`, `n_layers: 6`, `d_ff: 1536` (~10.7M parameters, ~3.1× capacity).
+      - Trained from scratch under a single smooth cosine schedule (`batch_size: 64`, `max_len: 128`, peak LR $5 \times 10^{-4}$, 12 epochs $\times$ 8,000 steps), reaching a peak validation character accuracy of 0.5914 and test character accuracy of 0.582.
+    - **Inference CLI Model Dispatch (`--model`)**:
+      - `src/part1_inference.py` and `src/part1_evaluate.py` support the `--model` parameter (`transformer`, `mamba`, `deltanet`, `hybrid`), defaulting strictly to `hybrid`.
+      - Checkpoint resolution maps each model to its peak validated configuration:
+        - `transformer`: Scaled Large architecture (10.7M parameters, `nani-nav/anlp-a3-transformer-large`, Test CharAcc ~0.582).
+        - `mamba`: Stage 5 checkpoint (`nani-nav/anlp-a3-mamba-v3`, Test CharAcc ~0.536), representing the highest-performing pure recurrent model.
+        - `deltanet`: Stage 3 checkpoint (`nani-nav/anlp-a3-deltanet-v3`, Test CharAcc ~0.487).
+        - `hybrid`: Stage 3 checkpoint (`nani-nav/anlp-a3-hybrid-v3`, Test CharAcc ~0.498, default model for `test_assn.sh`).
+      - All checkpoints are hosted publicly on Hugging Face and auto-download directly to isolated local directories (`models/part1/<repo_slug>/`), completely eliminating cross-model checkpoint collision and obsolete `_v2` fallbacks.
 
 ---
 
@@ -150,14 +162,15 @@ Empirical analysis of `data/part1/` reveals:
 ## 4. Hugging Face and WandB Integration
 
 ### 4.1 Hugging Face Model Hub
-- Repositories configured for user `nani-nav` (with distinct `v2` repositories to preserve legacy runs):
-  - `nani-nav/anlp-a3-transformer-v2`
-  - `nani-nav/anlp-a3-mamba-v2`
-  - `nani-nav/anlp-a3-deltanet-v2`
-  - `nani-nav/anlp-a3-hybrid-v2`
-- Automated Pull for Evaluation: `src/part1_inference.py` pulls models from Hugging Face by default (`from_hf=True`). If the checkpoint cannot be fetched and no local checkpoint is found, an explicit `FileNotFoundError` is raised.
+- Repositories configured for user `nani-nav`:
+  - `nani-nav/anlp-a3-transformer-large` (Peak submission: 10.7M parameters)
+  - `nani-nav/anlp-a3-transformer-v3`
+  - `nani-nav/anlp-a3-mamba-v3` (Peak submission: Stage 5)
+  - `nani-nav/anlp-a3-deltanet-v3` (Peak submission: Stage 3)
+  - `nani-nav/anlp-a3-hybrid-v3` (Peak submission: Stage 3 / default)
+- Automated Pull for Evaluation: `src/part1_inference.py` pulls models from Hugging Face by default (`from_hf=True`) directly into model-specific local directories (`models/part1/<repo_slug>/`). If the checkpoint cannot be fetched and no local checkpoint is found, an explicit `FileNotFoundError` is raised.
 
 ### 4.2 Weights & Biases (WandB)
 - Project: `Anlp_A3` under entity `nanikolupoti-iiit-hyderabad`.
-- Part 1 Tracking: Distinct run names (`transformer_v2`, `mamba_v2`, `deltanet_v2`, `hybrid_v2`) logging training loss, validation loss, validation character accuracy (overall and by length buckets `0-1k`, `1-2k`, `2k+`), learning rate schedule, parameter count, FLOPs, and best validation accuracy.
+- Part 1 Tracking: Distinct run names logging training loss, validation loss, validation character accuracy (overall and by length buckets `0-1k`, `1-2k`, `2k+`), learning rate schedule, parameter count, FLOPs, and best validation accuracy.
 - Part 2 Tracking: Logs test metrics across seeds for Part A and Part B feature ablations, and syncs artifacts to WandB.

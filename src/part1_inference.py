@@ -74,6 +74,8 @@ def load_inference_model(config_path, checkpoint_path=None, device="cpu", from_h
 
     ckpt_file = checkpoint_path
     repo_id = cfg.get("huggingface", {}).get("repo_id")
+    repo_slug = repo_id.split("/")[-1] if repo_id else m_type
+    model_specific_local = os.path.join("models", "part1", repo_slug, m_type + "_v3_best.pt")
     default_local = os.path.join("models", "part1", m_type + "_v3_best.pt")
 
     if from_hf and repo_id:
@@ -81,7 +83,7 @@ def load_inference_model(config_path, checkpoint_path=None, device="cpu", from_h
             pulled = download_hf_checkpoint(
                 repo_id=repo_id,
                 filename=m_type + "_v3_best.pt",
-                local_dir=os.path.join("models", "part1")
+                local_dir=os.path.join("models", "part1", repo_slug)
             )
             if pulled and os.path.exists(pulled):
                 ckpt_file = pulled
@@ -89,7 +91,9 @@ def load_inference_model(config_path, checkpoint_path=None, device="cpu", from_h
             print("Warning: Hugging Face download failed (" + str(e) + "). Attempting local fallback...", flush=True)
 
     if ckpt_file is None or not os.path.exists(ckpt_file):
-        if os.path.exists(default_local):
+        if os.path.exists(model_specific_local):
+            ckpt_file = model_specific_local
+        elif os.path.exists(default_local):
             ckpt_file = default_local
         else:
             raise FileNotFoundError("Checkpoint not found locally or on Hugging Face for " + str(m_type) + ". Checked: " + str(ckpt_file) + " and " + str(default_local))
@@ -118,7 +122,8 @@ def decrypt_sample(model, in_tok, out_tok, ciphertext, device="cpu"):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--heldout", action="store_true")
-    parser.add_argument("--config", type=str, default="config/part1/hybrid.yaml")
+    parser.add_argument("--model", type=str, choices=["transformer", "mamba", "deltanet", "hybrid"], default="hybrid")
+    parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--no_hf", action="store_true")
     parser.add_argument("--input_file", type=str, default=None)
@@ -126,9 +131,18 @@ def main():
     parser.add_argument("--roll_number", type=str, default="2024101056")
     args = parser.parse_args()
 
+    model_configs = {
+        "hybrid": "config/part1/hybrid.yaml",
+        "transformer": "config/part1/transformer_large.yaml",
+        "mamba": "config/part1/mamba.yaml",
+        "deltanet": "config/part1/deltanet.yaml"
+    }
+
+    config_path = args.config if args.config else model_configs.get(args.model, "config/part1/hybrid.yaml")
+
     device = get_device()
     from_hf = not args.no_hf
-    model, in_tok, out_tok = load_inference_model(args.config, args.checkpoint, device=device, from_hf=from_hf)
+    model, in_tok, out_tok = load_inference_model(config_path, args.checkpoint, device=device, from_hf=from_hf)
 
     if args.heldout:
         if args.input_file:

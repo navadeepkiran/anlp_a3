@@ -194,6 +194,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pred", type=str, default="output/part1/test_decrypt.jsonl")
     parser.add_argument("--target", type=str, default="data/part1/test/cleaned.jsonl")
+    parser.add_argument("--model", type=str, choices=["transformer", "mamba", "deltanet", "hybrid"], default=None)
     parser.add_argument("--model_name", type=str, default="hybrid")
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--output_json", type=str, default=None)
@@ -217,7 +218,15 @@ def main():
 
     metrics = evaluate_dict(preds_dict, targets_dict)
 
-    cfg_file = args.config if args.config else os.path.join("config", "part1", args.model_name + ".yaml")
+    model_choice = args.model if args.model else args.model_name
+    model_configs = {
+        "hybrid": "config/part1/hybrid.yaml",
+        "transformer": "config/part1/transformer_large.yaml",
+        "mamba": "config/part1/mamba.yaml",
+        "deltanet": "config/part1/deltanet.yaml"
+    }
+
+    cfg_file = args.config if args.config else model_configs.get(model_choice, os.path.join("config", "part1", model_choice + ".yaml"))
     if os.path.exists(cfg_file):
         try:
             model, _, _ = load_inference_model(cfg_file, from_hf=False, device="cpu")
@@ -235,7 +244,7 @@ def main():
         else:
             print(str(k) + ": " + str(v))
 
-    out_file = args.output_json if args.output_json else os.path.join("results", "part1", args.model_name + ".json")
+    out_file = args.output_json if args.output_json else os.path.join("results", "part1", model_choice + ".json")
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
     with open(out_file, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)

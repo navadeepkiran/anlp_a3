@@ -18,9 +18,9 @@ echo "=========================================================="
 
 for MODEL in transformer mamba deltanet hybrid; do
     echo "=== Running Inference: $MODEL ==="
-    uv run python -m src.part1_inference --config "config/part1/${MODEL}.yaml" --output_file "output/part1/${MODEL}_decrypt.jsonl"
+    uv run python -m src.part1_inference --model "$MODEL" --output_file "output/part1/${MODEL}_decrypt.jsonl"
     echo "=== Metrics for $MODEL ==="
-    uv run python -m src.part1_evaluate --pred "output/part1/${MODEL}_decrypt.jsonl" --target data/part1/test/cleaned.jsonl --model_name "${MODEL}"
+    uv run python -m src.part1_evaluate --pred "output/part1/${MODEL}_decrypt.jsonl" --target data/part1/test/cleaned.jsonl --model "${MODEL}"
     echo "----------------------------------------------------------"
 done
 
