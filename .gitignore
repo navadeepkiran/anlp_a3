@@ -28,3 +28,6 @@ models/**
 logs/**
 !logs/**/
 !logs/**/.gitkeep
+
+# Heldout test artifacts (generated on-demand by TA evaluation)
+output/part1/heldout_result_*.jsonl

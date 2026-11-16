@@ -1,0 +1,188 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage{times}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{caption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    citecolor=blue!70!black,
+    urlcolor=blue!70!black
+}
+
+\titlespacing*{\section}{0pt}{8pt plus 2pt minus 2pt}{3pt plus 1pt minus 1pt}
+\titlespacing*{\subsection}{0pt}{6pt plus 1pt minus 1pt}{2pt plus 1pt minus 1pt}
+\titleformat{\section}{\large\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.8em}{}
+\captionsetup{font=small,skip=4pt}
+\setlist{nosep,topsep=1pt,leftmargin=1.4em}
+\setlength{\parskip}{2pt plus 1pt minus 1pt}
+\setlength{\parindent}{12pt}
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries ANLP Assignment 3: Non-Autoregressive Sequence Modeling for Dynamic Cipher Decryption and Pure-PyTorch GNNs for Fake News Detection}\\[4pt]
+\textbf{Navadeep Kiran Kolupoti} \quad Roll: \texttt{2024101056} \quad IIIT Hyderabad \quad \texttt{kolupoti.kiran@students.iiit.ac.in}\\[3pt]
+\footnotesize
+\textbf{W\&B Logs:} \href{https://forge.coreweave.com/wandb/nanikolupoti-iiit-hyderabad/Anlp_A3?nw=nwusernanikolupoti}{\texttt{nanikolupoti-iiit-hyderabad/Anlp\_A3}} \quad $\vert$ \quad
+\textbf{Hugging Face Hub:} \href{https://huggingface.co/nani-nav}{\texttt{huggingface.co/nani-nav}} \quad $\vert$ \quad
+\textbf{GitLab:} \href{https://code.iiit.ac.in/advanced-nlp/m26-assignment3-kolupoti.kiran}{\texttt{m26-assignment3-kolupoti.kiran}}
+\end{center}
+\vspace{-8pt}
+
+\begin{abstract}
+\small\noindent
+This report evaluates non-autoregressive sequence modeling on dynamic cipher decryption (Part 1) and graph representation learning on news propagation cascades (Part 2). Exhaustive cryptanalysis of 572,141 pairs demonstrates that the cipher consists of 18 noise tokens masking a deterministic, state-dependent substitution cipher exhibiting period-6 modulation. Formulating decryption as aligned causal classification over noise-stripped sequences ($V_{in}=65 \to V_{out}=27$), we benchmark four from-scratch PyTorch architectures: causal Transformer, Mamba (S6), DeltaNet, and an interleaved Hybrid. Under an equal compute budget ($\approx 3.5\text{M}$ params, 60k steps), Mamba achieves superior character accuracy ($0.5201$) over Transformer ($0.5142$) and DeltaNet ($0.4873$). Capacity scaling demonstrates that our submitted 10.7M Transformer reaches $0.5832$ test character accuracy ($717.0$ edit distance, $42.96\%$ word accuracy), whereas a 25.2M model saturates ($0.5841$) and recurrent Mamba diverges at 12.8M. We analyze the decoding ``cliff'' at position 19 and period-6 rebound at position 20, explaining the discrepancy between positional accuracy ($\approx 0.179$) and Levenshtein score ($\approx 0.583$). In Part 2, five native PyTorch GNNs are evaluated across 5 seeds on UPFD GossipCop. Propagation cascades provide a $+24.7$ percentage point F1 gain over the root-only baseline ($72.37\% \to 97.07\%$). GAT and Bi-GCN form a statistical tie ($97.07\%$ vs $96.93\%$), while 310-dim multimodal \texttt{content} features outperform 768-dim BERT ($97.28\%$ vs $96.19\%$).
+\end{abstract}
+\vspace{-2pt}
+\noindent\footnotesize\textbf{Release Artifacts:} Model weights: \href{https://huggingface.co/nani-nav}{\texttt{huggingface.co/nani-nav}}; Training logs: \href{https://forge.coreweave.com/wandb/nanikolupoti-iiit-hyderabad/Anlp_A3?nw=nwusernanikolupoti}{\texttt{W\&B (Anlp\_A3)}}. All models run in $\le 10\text{GB}$ VRAM via \texttt{uv}.
+\vspace{-4pt}
+
+\section{Part 1: Target Cipher Cryptanalysis and Formulation}
+\textbf{Empirical Cipher Properties:} We analyzed all 572,141 samples in \texttt{data/part1/} (569,670 train, 2,471 val, 2,471 test):
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Target Alphabet ($V_{out} = 27$):} Plaintext contains strictly lowercase letters (\texttt{'a'}--\texttt{'z'}) and space (\texttt{' '}).
+    \item \textbf{Noise Tokens ($V_{noise} = 18$):} Alphabet set difference identifies exactly 18 noise symbols: \texttt{!'+,-./:;<=>?[]_{}}.
+    \item \textbf{Exact Length Alignment:} Stripping these 18 symbols preserves length perfectly: $|\tilde{c}| = |p|$ holds for 100\% of samples (572,141/572,141). Thus, noise insertion is non-content-shifting, establishing strict 1:1 causal alignment: stripped index $i$ encrypts plaintext index $i$.
+    \item \textbf{Dynamic State Evolution:} Position 0 uses a fixed monoalphabetic table. Later positions depend dynamically on context with a persistent period-6 modulation (cross-correlation spikes at positions 2, 8, 14, 20). Local window $n$-gram tables achieve only unigram baseline accuracy ($\approx 0.169$), proving that encryption depends on cumulative state history.
+\end{enumerate}
+
+\noindent\textbf{Formulation --- Non-Autoregressive Causal Classification:} Early autoregressive models ($p(y_t | y_{<t}, c)$) displayed deceptively low cross-entropy loss ($<0.5$), but free generation collapsed to $\approx 0.18$ character accuracy because teacher forcing trained an unconditioned English language model rather than a cipher inverter. We formulate decryption as aligned causal classification over noise-stripped tokens $\tilde{c}$: $\hat{y}_t = \arg\max_k P(y_t = k \mid \tilde{c}_{\le t})$. Inference runs in a single forward pass ($O(1)$ sequential steps), eliminating autoregressive drift and generation latency on long sequences ($L \le 16,384$).
+
+\section{From-Scratch Sequence Architectures}
+All models were implemented from scratch in pure PyTorch (no external libraries like \texttt{mamba\_ssm}):
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Causal Transformer:} Dynamic sinusoidal positional encodings, pre-RMSNorm, causal multi-head self-attention using PyTorch \texttt{F.scaled\_dot\_product\_attention}, and two-layer GELU Feed-Forward Networks.
+    \item \textbf{Mamba (S6 SSM):} Selective scan: $h_t = \bar{A}_t h_{t-1} + \bar{B}_t x_t, y_t = C_t h_t + D x_t$ with $\bar{A}_t = \exp(\Delta_t A), \bar{B}_t = \Delta_t B_t$. Projections $\Delta_t, B_t, C_t$ are input-dependent; $\Delta_t$ uses Softplus. Includes 1D causal depthwise convolution (kernel size 4), SiLU gating branch, RMSNorm, and FFN.
+    \item \textbf{DeltaNet:} Error-driven associative memory: $S_t = S_{t-1} + \beta_t (v_t - S_{t-1} k_t) k_t^T, o_t = S_t q_t$ (Yang et al., NeurIPS 2024). Queries and keys are $L_2$-normalized to ensure bounded recurrent memory updates.
+    \item \textbf{Interleaved Hybrid:} Independent class alternating blocks: Mamba $\to$ DeltaNet $\to$ Mamba $\to$ DeltaNet. Mamba tracks local sequence context and period-6 state via convolution and selective decay, while DeltaNet maintains associative substitution key states via the delta rule.
+\end{itemize}
+
+\section{Part 1 Experimental Results and Scaling Laws}
+Training utilized AdamW, cosine annealing with warmup, gradient clipping at 1.0, and mixed precision. Multi-stage training followed: Stage 1 (20k steps, LR 5e-4, max len 256), Stage 2 (20k steps, LR 3e-4), and Stage 3 (20k steps, LR 2e-4, cumulative 60k steps per model). Full evaluation appears in Table~\ref{tab:part1_results}.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Part 1 cipher evaluation: Equal-budget Stage 3 benchmark ($\approx 3.5\text{M}$ params, 60k steps) and capacity scaling on test data ($L \le 16,384$). Per-position metrics report strict unaligned token match; WordAcc is zero-error word decryption; CharAcc reports normalized Levenshtein accuracy.}
+\label{tab:part1_results}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Model Architecture} & \textbf{Params} & \textbf{Pos 0 Acc} & \textbf{Token Acc} & \textbf{Word Acc} & \textbf{Test CharAcc} & \textbf{Edit Dist} \\
+\midrule
+\multicolumn{7}{l}{\textit{Stage 3 Equal-Budget Benchmark (60k steps, identical compute budget)}} \\
+\href{https://huggingface.co/nani-nav/anlp-a3-mamba-v3}{Mamba (S6)} & 3.88M & \textbf{1.000} & \textbf{0.1812} & 0.3582 & \textbf{0.5201} & \textbf{719.4} \\
+Transformer & 3.20M & \textbf{1.000} & 0.1788 & 0.3512 & 0.5142 & 731.8 \\
+\href{https://huggingface.co/nani-nav/anlp-a3-hybrid-v3}{Hybrid (Mamba--DeltaNet)} & 3.67M & \textbf{1.000} & 0.1764 & 0.3441 & 0.4981 & 742.6 \\
+\href{https://huggingface.co/nani-nav/anlp-a3-deltanet-v3}{DeltaNet} & 3.46M & \textbf{1.000} & 0.1721 & 0.3395 & 0.4873 & 754.2 \\
+\midrule
+\multicolumn{7}{l}{\textit{Deployed Checkpoints Evaluated on Full Test Set (1,318 sequences)}} \\
+\href{https://huggingface.co/nani-nav/anlp-a3-transformer-large}{\textbf{Transformer Large (Submitted)}} & \textbf{10.67M} & \textbf{1.000} & \textbf{0.1789} & \textbf{0.4296} & \textbf{0.5832} & \textbf{717.0} \\
+\href{https://huggingface.co/nani-nav/anlp-a3-mamba-v3}{Mamba (Stage 5 Frontier)} & 3.88M & \textbf{1.000} & 0.1783 & 0.3665 & 0.5363 & 725.8 \\
+\href{https://huggingface.co/nani-nav/anlp-a3-hybrid-v3}{Hybrid (Mamba--DeltaNet)} & 3.67M & \textbf{1.000} & 0.1768 & 0.3468 & 0.4984 & 728.3 \\
+\href{https://huggingface.co/nani-nav/anlp-a3-deltanet-v3}{DeltaNet} & 3.46M & \textbf{1.000} & 0.1767 & 0.3403 & 0.4877 & 729.1 \\
+Transformer XL (Capacity Probe) & 25.20M & \textbf{1.000} & 0.1875 & 0.4308 & 0.5841 & 696.2 \\
+Mamba Large (Recurrent Failure) & 12.80M & 0.038 & 0.0371 & 0.0000 & 0.1250 & Diverged \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Key Insights:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Equal-Budget Regimes:} At $\approx 3.5\text{M}$ params, Mamba outperforms Transformer by $+0.6$ points and DeltaNet by $+3.3$ points. Continuous selective state transitions model dense recurrence more effectively than attention under tight budgets. Hybrid ($0.4981$) outperforms DeltaNet ($0.4873$), validating associative memory stabilization.
+    \item \textbf{Capacity Scaling Laws:} Scaling Transformer to 10.7M yields a massive $+0.069$ accuracy jump ($0.5832$, $42.96\%$ word accuracy). Scaling further to 25.2M yields negligible gains ($+0.0009$), indicating parameter saturation. Conversely, Mamba Large (12.8M) diverged (acc collapsed to $0.1250$) due to recurrent gradient explosion at standard learning rates, demonstrating Transformer's superior architectural stability.
+\end{enumerate}
+
+\section{Positional Decoding Mechanics and Metric Divergence}
+\textbf{Per-Position Accuracy as the Honest Metric:} Unlike Levenshtein distance, which permits opportunistic alignments on English unigram frequencies and rewards shorter sequences, rigid per-position accuracy $P(y_i = \hat{y}_i)$ directly measures authentic cryptographic state inversion. Its positional progression reveals clear mechanistic phases:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Position 0 (Fixed Substitution):} Accuracy is exactly $1.000$ across all four architectures, reflecting complete mathematical inversion of the static monoalphabetic table.
+    \item \textbf{Positions 1 to 5 (Early Stabilization):} Mean accuracy is $0.9870$ (Transformer), $0.9717$ (Mamba), $0.9576$ (Hybrid), and $0.9522$ (DeltaNet). State trajectories remain tightly synchronized.
+    \item \textbf{Positions 6 to 18 (Early State Tracking):} Transformer maintains $0.9216$ at position 18, and Mamba maintains $0.7843$. Conversely, DeltaNet ($0.2330$) and Hybrid ($0.2561$) degrade earlier due to associative memory saturation.
+    \item \textbf{Positions 19 and 20 (The Cliff \& Period-6 Rebound):} At position 19, a steep cliff drop occurs across all models (Transformer falls from $0.9216 \to 0.3986$; Mamba from $0.7843 \to 0.2375$; Hybrid from $0.2561 \to 0.1957$; DeltaNet from $0.2330 \to 0.2005$). At position 20, coinciding with the period-6 modular boundary ($14+6=20$), every model exhibits a sharp rebound (Transformer surges $+0.221$ to $0.6196$, Mamba $+0.220$ to $0.4572$, Hybrid $+0.072$ to $0.2677$, DeltaNet $+0.040$ to $0.2404$).
+    \item \textbf{Positions 21+ (Phase Drift Plateau):} Accuracy settles near the background unigram prior ($\approx 0.174$--$0.183$). Non-linear prediction errors compound, causing loss of phase synchronization with the true dynamic cipher state.
+\end{itemize}
+
+\noindent\textbf{Levenshtein vs. Rigid Positional Discrepancy:} Full-sequence rigid token accuracy is $\approx 0.179$, while Levenshtein character accuracy reaches $0.5832$ ($0.4296$ word accuracy). This divergence is an inherent mathematical artifact of dynamic programming: Levenshtein distance permits dynamic insertions/deletions. Because English character distributions are heavily concentrated (\texttt{' '}, \texttt{'e'}, \texttt{'t'}, \texttt{'a'}), generating text with appropriate unigram frequencies allows the Levenshtein algorithm to opportunistically align scattered characters with ground truth, producing an edit distance of $\approx 739$ even for degenerate space-only predictions. Our submitted model's average edit distance of $717.0$ reflects genuine early-token decryption on top of this background alignment.
+
+\section{Part 2: Pure-PyTorch Graph Neural Networks for Fake News Detection}
+\textbf{Dataset Setup:} Evaluated on UPFD GossipCop (5,464 news propagation trees, 20\% train / 10\% val / 70\% test). Node 0 is the root news article; remaining nodes are Twitter retweeters. GCN, GraphSAGE, and GAT use undirected edges (\texttt{ToUndirected()}); Bi-GCN preserves directed cascade flows. Batch-wise feature standardization is executed on GPU to ensure numerical stability across modalities.
+
+\noindent\textbf{Native Implementations:} To satisfy General Instruction \#1, all GNN layers were coded from scratch in pure PyTorch: Root MLP ($x_{root}$ through 2-layer MLP), Native GCN ($\tilde{D}^{-1/2}\tilde{A}\tilde{D}^{-1/2}XW$ with self-loops), Native GraphSAGE (neighborhood mean aggregation), Native GAT (4-head attention with self-loops, bias, and stabilized softmax), and Native Bi-GCN (top-down and bottom-up GCNs with DropEdge and root feature injection after each layer, following Bian et al., 2020).
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\caption{Part 2: 5-seed evaluation (mean $\pm$ std) on UPFD GossipCop (Checkpoints: \href{https://huggingface.co/nani-nav/anlp-a3-gnn}{\texttt{nani-nav/anlp-a3-gnn}}). Part A: Architectures on 768-dim BERT features. Part B: Feature modality ablation using native GraphSAGE.}
+\label{tab:part2_results}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Configuration} & \textbf{Accuracy (\%)} & \textbf{Precision (\%)} & \textbf{Recall (\%)} & \textbf{F1-Score (\%)} \\
+\midrule
+\multicolumn{5}{l}{\textit{Part A: Architecture Comparison (BERT Features, 5 Seeds)}} \\
+Root-Only MLP & $73.51 \pm 0.77$ & $75.88 \pm 2.54$ & $69.39 \pm 3.51$ & $72.37 \pm 1.05$ \\
+GCN (Native) & $96.54 \pm 0.17$ & $96.62 \pm 0.17$ & $96.46 \pm 0.39$ & $96.54 \pm 0.17$ \\
+GraphSAGE (Native) & $96.20 \pm 0.20$ & $96.61 \pm 0.33$ & $95.78 \pm 0.57$ & $96.19 \pm 0.21$ \\
+Bi-GCN (Native) & $96.93 \pm 0.21$ & $\mathbf{97.23 \pm 0.29}$ & $96.63 \pm 0.32$ & $96.93 \pm 0.21$ \\
+\textbf{GAT (Native, 4 Heads)} & $\mathbf{97.05 \pm 0.38}$ & $96.55 \pm 0.85$ & $\mathbf{97.60 \pm 0.91}$ & $\mathbf{97.07 \pm 0.38}$ \\
+\midrule
+\multicolumn{5}{l}{\textit{Part B: Feature Modality Ablation (GraphSAGE Backbone, 5 Seeds)}} \\
+User Profile (\texttt{profile}, 10D) & $94.88 \pm 0.14$ & $93.90 \pm 0.61$ & $96.03 \pm 0.77$ & $94.95 \pm 0.15$ \\
+SpaCy Embeddings (\texttt{spacy}, 300D) & $95.35 \pm 0.15$ & $94.61 \pm 1.09$ & $96.22 \pm 0.94$ & $95.40 \pm 0.10$ \\
+BERT Embeddings (\texttt{bert}, 768D) & $96.20 \pm 0.20$ & $96.61 \pm 0.33$ & $95.78 \pm 0.57$ & $96.19 \pm 0.21$ \\
+\textbf{Multimodal Content (\texttt{content}, 310D)} & $\mathbf{97.27 \pm 0.10}$ & $\mathbf{97.15 \pm 0.49}$ & $\mathbf{97.41 \pm 0.55}$ & $\mathbf{97.28 \pm 0.10}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Interpretation and Analysis:}
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Cascade Value:} Propagating cascades yields a $+24.7$ percentage point F1 gain over the root-only MLP ($72.37\% \to 97.07\%$). Because the root MLP only sees the source post while GNNs aggregate retweeters' representations, this gain combines cascade structure and user metadata signals.
+    \item \textbf{GAT vs. Bi-GCN:} GAT achieves slightly highest mean F1 ($97.07\%$), but the gap with Bi-GCN ($96.93\%$) is $0.14$ points, lying within one standard deviation (statistical tie). Bi-GCN has higher precision ($97.23\%$ vs $96.55\%$), while GAT has higher recall ($97.60\%$ vs $96.63\%$). We hypothesize that dynamic attention weights downweight noisy or bot retweets, though confirming this requires explicit edge-shuffling ablations.
+    \item \textbf{Content Feature Breakdown:} In UPFD, \texttt{content} is a 310-dim vector combining 300-dim spaCy text with 10-dim user profile metadata. It outperforms standalone \texttt{profile} ($94.95\%$) and \texttt{spacy} ($95.40\%$). Crucially, 310-dim \texttt{content} beats 768-dim \texttt{bert} ($97.28\%$ vs $96.19\%$), proving that user credibility metadata (follower counts, verification) provides complementary signals absent from pure text embeddings.
+\end{enumerate}
+
+\section{Conclusion}
+This study demonstrated that non-autoregressive causal sequence modeling provides a fast, effective solution for dynamic cipher decryption. While Mamba achieves superior parameter efficiency at small budgets, scaled causal Transformers provide superior optimization stability and performance ($0.5832$ character accuracy, $717.0$ edit distance, $42.96\%$ word accuracy). In fake news detection, native PyTorch GNN cascades deliver a $+24.7$ point improvement over text-only baselines, with multimodal profile-text integration establishing top performance.
+
+\newpage
+\appendix
+\section*{Reproducibility, Model Hub \& Log Links}
+\noindent\textit{Per assignment guidelines, this section is excluded from the 4-page limit.}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Weights \& Biases Logs:} Unified dashboard with per-epoch curves: \url{https://forge.coreweave.com/wandb/nanikolupoti-iiit-hyderabad/Anlp_A3?nw=nwusernanikolupoti}
+    \item \textbf{Public Hugging Face Checkpoints:}
+    \begin{itemize}
+        \item Part 1 Transformer Large: \url{https://huggingface.co/nani-nav/anlp-a3-transformer-large}
+        \item Part 1 Mamba: \url{https://huggingface.co/nani-nav/anlp-a3-mamba-v3}
+        \item Part 1 DeltaNet: \url{https://huggingface.co/nani-nav/anlp-a3-deltanet-v3}
+        \item Part 1 Hybrid: \url{https://huggingface.co/nani-nav/anlp-a3-hybrid-v3}
+        \item Part 2 GNN Suite: \url{https://huggingface.co/nani-nav/anlp-a3-gnn}
+    \end{itemize}
+    \item \textbf{Reproducibility \& Environment Management:} Maintained strictly using \texttt{uv} with locked dependencies (\texttt{pyproject.toml}):
+    \begin{itemize}
+        \item Part 1 Inference: \texttt{bash scripts/part1/test\_assn.sh [--heldout] [--model <model>]}
+        \item Part 2 Evaluation: \texttt{bash scripts/part2/test\_gnn.sh [--ta]}
+    \end{itemize}
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{mamba} Albert Gu and Tri Dao. 2023. Mamba: Linear-Time Sequence Modeling with Selective State Spaces. \textit{arXiv:2312.00752}.
+\bibitem{deltanet} Songlin Yang, Bailin Wang, Yikang Shen, Rameswar Panda, and Yoon Kim. 2024. Parallelizing Linear Transformers with the Delta Rule. \textit{NeurIPS 2024 / arXiv:2406.06484}.
+\bibitem{bigcn} Tian Bian, Xi Xiao, Tingyang Xu, Peilin Zhao, Wenbing Huang, Yu Rong, and Junzhou Huang. 2020. Rumor Detection on Social Media with Bi-Directional Graph Convolutional Networks. \textit{AAAI 2020}.
+\bibitem{upfd} Yingtong Dou, Kai Shu, Cong Shen, Xichao Dong, Philip S. Yu. 2021. User Preference-aware Fake News Detection. \textit{SIGIR 2021}.
+\end{thebibliography}
+
+\end{document}

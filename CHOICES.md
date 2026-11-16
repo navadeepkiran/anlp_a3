@@ -9,7 +9,7 @@ This document provides all technical descriptions, design decisions, architectur
 ### 1.1 Pure PyTorch Implementations from Scratch
 - As mandated by General Instruction #1, no third-party abstraction packages (such as `mamba_ssm`, `flash-linear-attention`, or PyG layer abstractions like `GCNConv`, `SAGEConv`, `GATConv`) are utilized for core model definitions.
 - All recurrent state transitions, selective scans, discretization formulas, associative memory updates, graph convolutions, and neighborhood aggregations are implemented purely with native PyTorch operations (`torch.nn`, `torch.matmul`, `torch.scatter_add_`, `torch.scatter_reduce_`, etc.).
-- The implementation is designed to run in under 10GB VRAM and execute cross-platform (CPU and CUDA).
+- The implementation executes cross-platform (CPU and CUDA). Peak measured VRAM on CUDA is 4.2GB during training (Transformer Large, batch 64) and 580MB during inference (with 512-character chunking), running well within the 10GB VRAM ceiling.
 
 ### 1.2 Separation of Concerns in Source Tree (`src/`)
 In accordance with Clarification #5, the `src/` and `docs/` directories are exempt from the `part1/` and `part2/` subdirectory requirement. The source files are organized cleanly as:
@@ -85,27 +85,29 @@ Empirical analysis of `data/part1/` reveals:
 
 ### 2.4 Evaluation Metrics for Part 1
 1. **Character Accuracy**: Normalized character-level agreement: $1 - \frac{\text{Levenshtein}(y_{pred}, y_{true})}{\max(|y_{pred}|, |y_{true}|)}$.
-2. **Word Accuracy**: Proportion of words matching ground truth exactly upon whitespace tokenization.
+2. **Word Accuracy**: Positional exact match of whitespace-separated words, divided by the longer word count, averaged per sample.
 3. **Word-Level Precision, Recall, F1-Score**: Unigram multiset intersection of whitespace-delimited words: $\text{Prec} = \frac{|P \cap T|}{|P|}$, $\text{Rec} = \frac{|P \cap T|}{|T|}$, $F_1 = \frac{2 \cdot \text{Prec} \cdot \text{Rec}}{\text{Prec} + \text{Rec}}$.
 4. **Character-Level Precision, Recall, F1-Score**: Multiset intersection of individual character counts across the 27-character alphabet ($' '$, $'a'-'z'$). Both word-level and character-level metrics are computed and reported for full transparency.
 5. **Levenshtein Distance**: Exact edit distance computed via dynamic programming / Wagner-Fischer algorithm (or `editdistance` when available).
 6. **Parameter Count**: Total number of trainable parameters (`p.requires_grad`): Transformer 10.67M, Mamba 3.88M, DeltaNet 3.46M, Hybrid 3.67M.
 7. **FLOPs**: Evaluated using `torch.utils.flop_counter.FlopCounterMode` on a standardized sequence length of 512 tokens. Counts only matrix multiplications and convolutions, so elementwise scan operations in Mamba and DeltaNet are not counted.
 8. **Per-Position Accuracy (Positions 0 to 20)**: Fine-grained positional accuracy $P(y_i = \hat{y}_i)$ for $i \in \{0, 1, \dots, 20\}$ to diagnose exactly where each architecture successfully tracks the state-dependent substitution table vs where decoding degrades.
-9. **Analysis of Metric Discrepancy (about 0.59 vs 0.18)**:
-   - There is an inherent discrepancy between exact per-position token accuracy (~0.18) and normalized Levenshtein character accuracy (~0.59).
-   - This occurs because Levenshtein distance permits dynamic alignment through insertions and deletions. Due to high English unigram character concentration ('e', 't', 'a', 'o', 'i', 'n', space), predicting English-distributed character sequences naturally aligns opportunistic subsequences with the gold text, yielding a baseline Levenshtein score of ~0.30–0.36 even when exact per-position substitution accuracy is ~0.18.
+9. **Analysis of Metric Discrepancy (about 0.58 vs 0.18)**:
+   - There is an inherent discrepancy between exact per-position token accuracy (~0.18) and normalized Levenshtein character accuracy (~0.58).
+   - This gap arises because short, frequent texts (and the opening 0–18 positions) are decoded with high exactness (positions 0–5 reach >98% accuracy), while on longer sequences the dynamic programming in Levenshtein distance permits opportunistic alignments and rewards English-looking guesses matching common unigram frequencies ('e', 't', 'a', space), even when exact per-position phase synchronization is lost beyond the period-6 horizon.
    - Rather than attempting to game the metric with artificial English filler, our models are trained strictly on the true causal alignment objective, and this metric gap is explicitly analyzed in the report as an artifact of edit-distance dynamic programming.
 
-### 2.5 Inference CLI Model Dispatch (`--model`)
+### 2.5 Inference CLI Model Dispatch (`--model`) & 512-Character Windowing
 - `src/part1_inference.py` and `src/part1_evaluate.py` support the `--model` parameter (`transformer`, `mamba`, `deltanet`, `hybrid`), defaulting strictly to `hybrid`.
+- **Memory-Efficient 512-Character Windowing**: Inputs longer than 512 characters are decoded in independent 512-character windows in `src/part1_inference.py` to keep GPU memory low and eliminate quadratic attention spikes on long test sequences ($L \le 16,384$, which otherwise allocate $>4\text{GB}$ in attention matrices and trigger CUDA out-of-memory errors on 11GB Pascal cards like the GTX 1080 Ti). Peak inference VRAM is capped at 580MB. Because cipher state tracking past position ~19 already settles near the background unigram baseline, the effect of independent windowing is negligible (test character accuracy is 0.5822 without windowing, and 0.5832 with windowing).
+- **Heldout Evaluation Protocol**: The script `test_assn.sh --heldout` dynamically decrypts heldout cipher data into `output/part1/heldout_result_2024101056.jsonl`. This output file is generated strictly on demand by TA evaluation and is deliberately excluded from git commits to avoid pre-populating dummy evaluations.
 - Checkpoint resolution maps each model directly to its standard configuration in `config/part1/<model>.yaml`:
-  - `transformer`: Scaled Large architecture (10.67M parameters, `nani-nav/anlp-a3-transformer-large`, Val CharAcc 0.5914, Test CharAcc ~0.582, configured in `config/part1/transformer.yaml`).
+  - `transformer`: Scaled Large architecture (10.67M parameters, `nani-nav/anlp-a3-transformer-large`, Val CharAcc 0.5914, Test CharAcc ~0.583, configured in `config/part1/transformer.yaml`).
   - `mamba`: Stage 5 checkpoint (`nani-nav/anlp-a3-mamba-v3`, Val CharAcc 0.5487, Test CharAcc ~0.536, configured in `config/part1/mamba.yaml`), representing the highest-performing pure recurrent model.
   - `hybrid`: Stage 3 checkpoint (`nani-nav/anlp-a3-hybrid-v3`, Val CharAcc 0.508, Test CharAcc ~0.498, configured in `config/part1/hybrid.yaml`, default model for `test_assn.sh`).
   - `deltanet`: Stage 3 checkpoint (`nani-nav/anlp-a3-deltanet-v3`, Val CharAcc 0.497, Test CharAcc ~0.487, configured in `config/part1/deltanet.yaml`).
 - Exploratory scaling runs (run on Kaggle, configs not included in the repository):
-  - Large Mamba (13.0M params): diverged at LR 5e-4.
+  - Large Mamba (12.8M params): diverged at LR 5e-4.
   - XL Transformer (25.2M params): achieved Val CharAcc 0.5921 and Test CharAcc 0.5841, showing no meaningful gain over the 10.7M model.
 - All checkpoints are hosted publicly on Hugging Face and auto-download directly to isolated local directories (`models/part1/<repo_slug>/`), eliminating cross-model checkpoint collision.
 
