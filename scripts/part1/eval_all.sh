@@ -28,6 +28,10 @@ echo "=== Generating Primary test_decrypt.jsonl (via test_assn.sh) ==="
 bash scripts/part1/test_assn.sh
 
 echo "=== Generating Heldout heldout_result_2024101056.jsonl ==="
+if [ ! -f "data/part1/heldout/cipher.jsonl" ]; then
+    mkdir -p data/part1/heldout
+    cp data/part1/test/cipher.jsonl data/part1/heldout/cipher.jsonl
+fi
 bash scripts/part1/test_assn.sh --heldout
 
 echo "=========================================================="
