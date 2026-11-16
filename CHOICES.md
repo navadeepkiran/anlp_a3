@@ -146,12 +146,10 @@ All message-passing layers are implemented from scratch in pure PyTorch without 
 - Uses LeakyReLU attention scoring, numerically stable softmax over neighbor sets, and ELU activation.
 
 #### E. Bi-GCN (Bian et al., AAAI 2020)
-- Architecture:
-  1. Top-Down GCN ($\text{GCN}_{TD}$): Models information flow from root down to users along directed edges.
-  2. Bottom-Up GCN ($\text{GCN}_{BU}$): Models crowd feedback dispersion by reversing edge directions toward root.
-  3. Feature Concatenation: Combines pooled top-down representations, pooled bottom-up representations, and the original root feature vector:
-     $$h_{final} = [\text{Pool}(H_{TD}) \,\|\, \text{Pool}(H_{BU}) \,\|\, x_{root}]$$
-  4. Classification via fully connected layers.
+- Implements the formulation from Bian et al. (AAAI 2020):
+  1. Directional GCNs: Separate Top-Down ($\text{GCN}_{TD}$, forward edges) and Bottom-Up ($\text{GCN}_{BU}$, reversed edges) branches with DropEdge ($p=0.2$) during training.
+  2. Root Feature Injection: Root representations are concatenated after layer 1 ($[h_1 \,\|\, x_{root}]$ followed by ReLU and Dropout) and after layer 2 ($[h_2 \,\|\, h_{1, root}]$) to preserve source post conditioning throughout cascade propagation.
+  3. Pooling & Head: Native global mean pooling over both branches ($2 \times \text{hidden}$ each) concatenated into a $4 \times \text{hidden}$ representation followed by the linear classification head.
 
 ### 3.3 Training & Evaluation Protocol
 - 5 independent random seeds: `[42, 123, 456, 789, 1024]`.
