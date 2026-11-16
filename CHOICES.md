@@ -119,6 +119,7 @@ Empirical analysis of `data/part1/` reveals:
 - Node Structure: Node 0 is the root news article; remaining nodes represent Twitter users engaged in retweeting/propagating the news.
 - Undirected Propagation: GCN, GraphSAGE, and GAT apply `torch_geometric.transforms.ToUndirected()` so information can propagate from retweeters back to the root news node.
 - Edge Directionality in Bi-GCN: Bi-GCN uses directed edges (top-down and reversed bottom-up). The Moodle question on edge direction was not answered, so this follows the original paper.
+- Feature Modalities: `profile` (10-dim user metadata), `spacy` (300-dim historical tweet embeddings), `bert` (768-dim contextual embeddings), and `content` (310-dim hybrid concatenation of 300-dim `spacy` text + 10-dim `profile` metadata).
 - Batch-Wise Feature Standardization: All four feature types (`profile`, `spacy`, `bert`, `content`) are standardized with the training set mean and standard deviation. This prevents unscaled user profile metadata (e.g. follower counts in the tens of thousands) from dominating dense semantic embeddings, ensuring that "only the input feature type changes between configurations" stays mathematically sound.
 
 ### 3.2 Model Architectures (Pure Native PyTorch Layers)
@@ -169,6 +170,7 @@ All message-passing layers are implemented from scratch in pure PyTorch without 
 - Automated Pull for Evaluation: `src/part1_inference.py` pulls models from Hugging Face by default (`from_hf=True`). If the checkpoint cannot be fetched and no local checkpoint is found, an explicit `FileNotFoundError` is raised.
 
 ### 4.2 Weights & Biases (WandB)
-- W&B project `Anlp_A3`, run names:
+- W&B Dashboard: `https://forge.coreweave.com/wandb/nanikolupoti-iiit-hyderabad/Anlp_A3?nw=nwusernanikolupoti`
+- Unified project `Anlp_A3`, run names:
   - Part 1 runs: `transformer_large`, `mamba_v3`, `deltanet_v3`, `hybrid_v3`
   - Part 2 run: `part2_gnn_evaluation` (logging per-epoch training loss, validation F1/accuracy curves, and final 5-seed mean/std metrics)
