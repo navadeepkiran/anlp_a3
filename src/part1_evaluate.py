@@ -171,8 +171,17 @@ def evaluate_dict(preds_dict, targets_dict):
         for k in bucket_totals
     }
 
+    total_tokens = sum(phase_totals)
+    total_correct_tokens = sum(phase_corrects)
+    token_acc = float(total_correct_tokens / max(1, total_tokens))
+    pos_0_acc = float(pos_corrects[0] / max(1, pos_totals[0]))
+    pos_early_acc = float(sum(pos_corrects[:6]) / max(1, sum(pos_totals[:6])))
+
     return {
         "samples_evaluated": n,
+        "token_accuracy": token_acc,
+        "pos_0_accuracy": pos_0_acc,
+        "pos_0_to_5_accuracy": pos_early_acc,
         "character_accuracy": float(sum(char_accs) / n),
         "word_accuracy": float(sum(word_accs) / n),
         "precision": float(sum(precisions) / n),
