@@ -164,10 +164,11 @@ All message-passing layers are implemented from scratch in pure PyTorch without 
 
 ### 4.1 Hugging Face Model Hub
 - Hugging Face repos (public):
-  `nani-nav/anlp-a3-transformer-large`, `nani-nav/anlp-a3-mamba-v3`,
-  `nani-nav/anlp-a3-deltanet-v3`, `nani-nav/anlp-a3-hybrid-v3`
+  - Part 1 Sequence Models: `nani-nav/anlp-a3-transformer-large`, `nani-nav/anlp-a3-mamba-v3`, `nani-nav/anlp-a3-deltanet-v3`, `nani-nav/anlp-a3-hybrid-v3`
+  - Part 2 Graph Neural Networks: `nani-nav/anlp-a3-gnn` (stores best-validation checkpoints for all 5 architectures and feature configurations)
 - Automated Pull for Evaluation: `src/part1_inference.py` pulls models from Hugging Face by default (`from_hf=True`). If the checkpoint cannot be fetched and no local checkpoint is found, an explicit `FileNotFoundError` is raised.
 
 ### 4.2 Weights & Biases (WandB)
 - W&B project `Anlp_A3`, run names:
-  `transformer_large`, `mamba_v3`, `deltanet_v3`, `hybrid_v3`
+  - Part 1 runs: `transformer_large`, `mamba_v3`, `deltanet_v3`, `hybrid_v3`
+  - Part 2 run: `part2_gnn_evaluation` (logging per-epoch training loss, validation F1/accuracy curves, and final 5-seed mean/std metrics)

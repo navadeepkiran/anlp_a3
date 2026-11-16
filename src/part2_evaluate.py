@@ -60,7 +60,7 @@ def evaluate_loader(model, loader, device, mean=None, std=None):
         "f1": f1
     }
 
-def train_single_run(model_type, feature, seed, root="data/part2", epochs=60, lr=0.001, weight_decay=1e-4, hidden_dim=128, dropout=0.5, batch_size=128):
+def train_single_run(model_type, feature, seed, root="data/part2", epochs=60, lr=0.001, weight_decay=1e-4, hidden_dim=128, dropout=0.5, batch_size=128, wandb_run=None, prefix="", save_checkpoint=False):
     set_seed(seed)
     device = get_device()
 
@@ -84,6 +84,8 @@ def train_single_run(model_type, feature, seed, root="data/part2", epochs=60, lr
 
     for epoch in range(epochs):
         model.train()
+        total_loss = 0.0
+        num_batches = 0
         for batch in train_loader:
             batch = batch.to(device)
             ptr = getattr(batch, "ptr", None)
@@ -93,19 +95,50 @@ def train_single_run(model_type, feature, seed, root="data/part2", epochs=60, lr
             loss = criterion(logits, batch.y.float())
             loss.backward()
             optimizer.step()
+            total_loss += loss.item()
+            num_batches += 1
 
         val_metrics = evaluate_loader(model, val_loader, device, mean=mean, std=std)
         if val_metrics["f1"] > best_val_f1:
             best_val_f1 = val_metrics["f1"]
             best_weights = copy.deepcopy(model.state_dict())
 
+        if wandb_run and seed == 42:
+            avg_loss = total_loss / max(num_batches, 1)
+            wandb_run.log({
+                prefix + "/train_loss": avg_loss,
+                prefix + "/val_f1": val_metrics["f1"],
+                prefix + "/val_accuracy": val_metrics["accuracy"],
+                prefix + "/epoch": epoch + 1
+            })
+
     if best_weights is not None:
         model.load_state_dict(best_weights)
+
+    if save_checkpoint and best_weights is not None:
+        os.makedirs(os.path.join("models", "part2"), exist_ok=True)
+        ckpt_name = str(model_type) + "_" + str(feature) + "_best.pt"
+        ckpt_path = os.path.join("models", "part2", ckpt_name)
+        torch.save({
+            "model_state_dict": best_weights,
+            "in_channels": in_channels,
+            "hidden_dim": hidden_dim,
+            "dropout": dropout,
+            "model_type": model_type,
+            "feature": feature,
+            "best_val_f1": best_val_f1
+        }, ckpt_path)
+        try:
+            from src.utils import upload_hf_checkpoint
+            upload_hf_checkpoint(ckpt_path, repo_id="nani-nav/anlp-a3-gnn", path_in_repo=ckpt_name)
+            print("Uploaded " + str(ckpt_path) + " to nani-nav/anlp-a3-gnn", flush=True)
+        except Exception as e:
+            print("HF upload skipped for " + str(ckpt_path) + ": " + str(e), flush=True)
 
     test_metrics = evaluate_loader(model, test_loader, device, mean=mean, std=std)
     return test_metrics
 
-def run_experiment(model_type, feature, cfg):
+def run_experiment(model_type, feature, cfg, wandb_run=None, prefix=""):
     t_cfg = cfg.get("training", {})
     m_cfg = cfg.get("model", {})
     seeds = t_cfg.get("seeds", [42, 123, 456, 789, 1024])
@@ -127,7 +160,10 @@ def run_experiment(model_type, feature, cfg):
             weight_decay=weight_decay,
             hidden_dim=hidden_dim,
             dropout=dropout,
-            batch_size=batch_size
+            batch_size=batch_size,
+            wandb_run=wandb_run,
+            prefix=prefix,
+            save_checkpoint=(s == seeds[0])
         )
         seed_results.append(res)
 
@@ -178,12 +214,15 @@ def main():
         import wandb
         wandb_key = os.environ.get("WANDB_KEY") or os.environ.get("WANDB_API_KEY", "")
         if wandb_key:
-            wandb.login(key=wandb_key)
-            wandb_run = wandb.init(
-                project="Anlp_A3",
-                name="part2_gnn_evaluation",
-                config={"models": models_part_a, "features": features_part_b}
-            )
+            try:
+                wandb.login(key=wandb_key)
+            except Exception:
+                pass
+        wandb_run = wandb.init(
+            project="Anlp_A3",
+            name="part2_gnn_evaluation",
+            config={"models": models_part_a, "features": features_part_b}
+        )
     except Exception:
         pass
 
@@ -191,7 +230,7 @@ def main():
         cfg_path = os.path.join("config", "part2", m + ".yaml")
         cfg = load_config(cfg_path) if os.path.exists(cfg_path) else {}
         print("Running Part A: " + str(m) + " with bert features...", flush=True)
-        means, stds, seeds_data = run_experiment(model_type=m, feature="bert", cfg=cfg)
+        means, stds, seeds_data = run_experiment(model_type=m, feature="bert", cfg=cfg, wandb_run=wandb_run, prefix="part_a/" + str(m))
         results_data["part_a"][m] = means
         detailed_data["part_a"][m] = {
             "mean": means,
@@ -199,11 +238,11 @@ def main():
             "seeds": seeds_data
         }
         if wandb_run:
-            wandb.log({
-                f"part_a/{m}/accuracy": means["accuracy"],
-                f"part_a/{m}/precision": means["precision"],
-                f"part_a/{m}/recall": means["recall"],
-                f"part_a/{m}/f1": means["f1"]
+            wandb_run.log({
+                "part_a/" + str(m) + "/accuracy": means["accuracy"],
+                "part_a/" + str(m) + "/precision": means["precision"],
+                "part_a/" + str(m) + "/recall": means["recall"],
+                "part_a/" + str(m) + "/f1": means["f1"]
             })
 
     for f in features_part_b:
@@ -214,7 +253,7 @@ def main():
             seeds_data = detailed_data["part_a"]["sage"]["seeds"]
         else:
             print("Running Part B: sage with " + str(f) + " features...", flush=True)
-            means, stds, seeds_data = run_experiment(model_type="sage", feature=f, cfg=sage_cfg)
+            means, stds, seeds_data = run_experiment(model_type="sage", feature=f, cfg=sage_cfg, wandb_run=wandb_run, prefix="part_b/" + str(f))
         results_data["part_b"][f] = means
         detailed_data["part_b"][f] = {
             "mean": means,
@@ -222,11 +261,11 @@ def main():
             "seeds": seeds_data
         }
         if wandb_run:
-            wandb.log({
-                f"part_b/{f}/accuracy": means["accuracy"],
-                f"part_b/{f}/precision": means["precision"],
-                f"part_b/{f}/recall": means["recall"],
-                f"part_b/{f}/f1": means["f1"]
+            wandb_run.log({
+                "part_b/" + str(f) + "/accuracy": means["accuracy"],
+                "part_b/" + str(f) + "/precision": means["precision"],
+                "part_b/" + str(f) + "/recall": means["recall"],
+                "part_b/" + str(f) + "/f1": means["f1"]
             })
 
     os.makedirs("output/part2", exist_ok=True)
@@ -245,9 +284,12 @@ def main():
     print("Detailed metrics (means, stds, seeds) saved to " + str(detailed_path), flush=True)
 
     if wandb_run:
-        wandb.save(target_output)
-        wandb.save(detailed_path)
-        wandb.finish()
+        try:
+            wandb.save(target_output)
+            wandb.save(detailed_path)
+            wandb.finish()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()
