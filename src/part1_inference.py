@@ -78,25 +78,35 @@ def load_inference_model(config_path, checkpoint_path=None, device="cpu", from_h
     model_specific_local = os.path.join("models", "part1", repo_slug, m_type + "_v3_best.pt")
     default_local = os.path.join("models", "part1", m_type + "_v3_best.pt")
 
+    candidates = [m_type + "_v3_best.pt", m_type + "_large_best.pt", repo_slug.replace("-", "_") + "_best.pt", "best.pt"]
+
     if from_hf and repo_id:
-        try:
-            pulled = download_hf_checkpoint(
-                repo_id=repo_id,
-                filename=m_type + "_v3_best.pt",
-                local_dir=os.path.join("models", "part1", repo_slug)
-            )
-            if pulled and os.path.exists(pulled):
-                ckpt_file = pulled
-        except Exception as e:
-            print("Warning: Hugging Face download failed (" + str(e) + "). Attempting local fallback...", flush=True)
+        for fname in candidates:
+            try:
+                pulled = download_hf_checkpoint(
+                    repo_id=repo_id,
+                    filename=fname,
+                    local_dir=os.path.join("models", "part1", repo_slug)
+                )
+                if pulled and os.path.exists(pulled):
+                    ckpt_file = pulled
+                    break
+            except Exception:
+                pass
 
     if ckpt_file is None or not os.path.exists(ckpt_file):
-        if os.path.exists(model_specific_local):
-            ckpt_file = model_specific_local
-        elif os.path.exists(default_local):
-            ckpt_file = default_local
-        else:
-            raise FileNotFoundError("Checkpoint not found locally or on Hugging Face for " + str(m_type) + ". Checked: " + str(ckpt_file) + " and " + str(default_local))
+        for fname in candidates:
+            cand_spec = os.path.join("models", "part1", repo_slug, fname)
+            cand_def = os.path.join("models", "part1", fname)
+            if os.path.exists(cand_spec):
+                ckpt_file = cand_spec
+                break
+            elif os.path.exists(cand_def):
+                ckpt_file = cand_def
+                break
+
+    if ckpt_file is None or not os.path.exists(ckpt_file):
+        raise FileNotFoundError("Checkpoint not found locally or on Hugging Face for " + str(m_type) + ". Checked: " + str(repo_id) + " and " + str(model_specific_local))
 
     state_dict = torch.load(ckpt_file, map_location=device)
     model.load_state_dict(state_dict)
