@@ -103,11 +103,11 @@ Empirical analysis of `data/part1/` reveals:
       - Trained from scratch under a single smooth cosine schedule (`batch_size: 64`, `max_len: 128`, peak LR $5 \times 10^{-4}$, 12 epochs $\times$ 8,000 steps), reaching a peak validation character accuracy of 0.5914 and test character accuracy of 0.582.
     - **Inference CLI Model Dispatch (`--model`)**:
       - `src/part1_inference.py` and `src/part1_evaluate.py` support the `--model` parameter (`transformer`, `mamba`, `deltanet`, `hybrid`), defaulting strictly to `hybrid`.
-      - Checkpoint resolution maps each model to its peak validated configuration:
-        - `transformer`: Scaled Large architecture (10.7M parameters, `nani-nav/anlp-a3-transformer-large`, Test CharAcc ~0.582).
-        - `mamba`: Stage 5 checkpoint (`nani-nav/anlp-a3-mamba-v3`, Test CharAcc ~0.536), representing the highest-performing pure recurrent model.
-        - `deltanet`: Stage 3 checkpoint (`nani-nav/anlp-a3-deltanet-v3`, Test CharAcc ~0.487).
-        - `hybrid`: Stage 3 checkpoint (`nani-nav/anlp-a3-hybrid-v3`, Test CharAcc ~0.498, default model for `test_assn.sh`).
+      - Checkpoint resolution maps each model directly to its standard configuration in `config/part1/<model>.yaml`:
+        - `transformer`: Scaled Large architecture (10.7M parameters, `nani-nav/anlp-a3-transformer-large`, Test CharAcc ~0.582, configured in `config/part1/transformer.yaml`).
+        - `mamba`: Stage 5 checkpoint (`nani-nav/anlp-a3-mamba-v3`, Test CharAcc ~0.536, configured in `config/part1/mamba.yaml`), representing the highest-performing pure recurrent model.
+        - `deltanet`: Stage 3 checkpoint (`nani-nav/anlp-a3-deltanet-v3`, Test CharAcc ~0.487, configured in `config/part1/deltanet.yaml`).
+        - `hybrid`: Stage 3 checkpoint (`nani-nav/anlp-a3-hybrid-v3`, Test CharAcc ~0.498, configured in `config/part1/hybrid.yaml`, default model for `test_assn.sh`).
       - All checkpoints are hosted publicly on Hugging Face and auto-download directly to isolated local directories (`models/part1/<repo_slug>/`), completely eliminating cross-model checkpoint collision and obsolete `_v2` fallbacks.
 
 ---

@@ -221,7 +221,7 @@ def main():
     model_choice = args.model if args.model else args.model_name
     model_configs = {
         "hybrid": "config/part1/hybrid.yaml",
-        "transformer": "config/part1/transformer_large.yaml",
+        "transformer": "config/part1/transformer.yaml",
         "mamba": "config/part1/mamba.yaml",
         "deltanet": "config/part1/deltanet.yaml"
     }
